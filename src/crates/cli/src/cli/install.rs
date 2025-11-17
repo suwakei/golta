@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
+use serde::Deserialize;
 use zip::ZipArchive;
 
 #[cfg(target_os = "windows")]
@@ -11,6 +12,12 @@ const OS: &str = "linux-amd64";
 #[cfg(target_os = "macos")]
 const OS: &str = "darwin-amd64";
 
+#[derive(Deserialize, Debug)]
+struct GoVersionInfo {
+    version: String,
+    stable: bool,
+}
+
 pub async fn run(tool: String) {
     if let Err(e) = install_go(&tool).await {
         eprintln!("Error: {}", e);
@@ -18,18 +25,32 @@ pub async fn run(tool: String) {
 }
 
 async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
-    if !tool.starts_with("go@") {
-        return Err(
-            "Only Go installation is supported currently. Use format 'go@<version>'.".into(),
-        );
-    }
+    let version = if tool.starts_with("go@") {
+        tool.trim_start_matches("go@").to_string()
+    } else if tool == "go" {
+        println!("Finding latest stable Go version...");
+        let versions: Vec<GoVersionInfo> = reqwest::get("https://go.dev/dl/?mode=json")
+            .await?
+            .json()
+            .await?;
 
-    let version = tool.trim_start_matches("go@");
+        let latest_stable = versions
+            .into_iter()
+            .find(|v| v.stable)
+            .ok_or("Could not find a stable Go version.")?;
+
+        let version_number = latest_stable.version.trim_start_matches("go");
+        println!("Latest stable version is {}", version_number);
+        version_number.to_string()
+    } else {
+        return Err("Invalid format. Use `golta install go` or `golta install go@<version>`.".into());
+    };
+
     println!("Installing Go version {}", version);
 
     // `home::home_dir` を使ってクロスプラットフォームでホームディレクトリを取得
     let home = home::home_dir().ok_or("Could not find home directory")?;
-    let install_dir = home.join(".golta").join("versions").join(version);
+    let install_dir = home.join(".golta").join("versions").join(&version);
 
     if install_dir.exists() {
         println!("Go {} is already installed.", version);
@@ -47,7 +68,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     let url = format!(
         "https://golang.org/dl/go{}.{}.{}",
-        version, OS, archive_format
+        &version, OS, archive_format
     );
     println!("Downloading {} ...", url);
 
@@ -65,7 +86,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         use std::process::Command;
         // tar.gzを展開するライブラリを使うことで、tarコマンドへの依存をなくせる
         let temp_dir = tempfile::tempdir()?;
-        let tar_path = temp_dir.path().join(format!("go{}.tar.gz", version));
+        let tar_path = temp_dir.path().join(format!("go{}.tar.gz", &version));
         std::fs::write(&tar_path, &bytes)?;
 
         let status = Command::new("tar")
