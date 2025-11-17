@@ -1,7 +1,11 @@
 [package]
 name = "golta-cli"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+
+[[bin]]
+name = "golta"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.3", features = ["derive"] }

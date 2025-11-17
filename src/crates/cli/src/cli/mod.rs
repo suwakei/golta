@@ -1,11 +1,11 @@
+pub mod completions;
 pub mod default;
 pub mod exec;
 pub mod install;
-pub mod run;
 pub mod list;
 pub mod pin;
-pub mod uninstall;
-pub mod which;
-pub mod unpin;
+pub mod run;
 pub mod setup;
-pub mod completions;
+pub mod uninstall;
+pub mod unpin;
+pub mod which;

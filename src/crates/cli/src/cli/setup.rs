@@ -28,7 +28,9 @@ fn setup_environment() -> Result<(), Box<dyn Error>> {
     {
         println!("\nPlease add the following line to your shell's startup file (e.g., ~/.bashrc, ~/.zshrc):");
         println!("\n  export PATH=\"{}:$PATH\"", cargo_bin.display());
-        println!("\nAfter adding the line, restart your terminal or run `source <your_shell_file>`.");
+        println!(
+            "\nAfter adding the line, restart your terminal or run `source <your_shell_file>`."
+        );
     }
 
     println!("\nSetup complete. Welcome to Golta!");

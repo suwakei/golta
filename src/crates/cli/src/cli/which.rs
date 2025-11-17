@@ -47,7 +47,8 @@ fn which_go(tool: &str) -> Result<(), Box<dyn Error>> {
                     fs::read_to_string(default_file).map_err(|e| e.to_string())
                 })
                 .unwrap_or_default() // エラーの場合は空文字列を返す
-                .trim().to_string()
+                .trim()
+                .to_string()
         })
     };
 

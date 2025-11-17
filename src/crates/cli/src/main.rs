@@ -2,7 +2,7 @@ mod cli;
 
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
-use cli::{completions, default, exec, install, list, pin, run, setup, unpin, uninstall, which};
+use cli::{completions, default, exec, install, list, pin, run, setup, uninstall, unpin, which};
 
 #[derive(Parser)]
 #[command(name = "golta")]
@@ -29,12 +29,14 @@ pub enum Commands {
         /// The tool and version to set as default (e.g., "go@1.23.0")
         tool: String,
     },
-    #[command(about = "Run a command with a one-time tool version, ignoring the current configuration")]
+    #[command(
+        about = "Run a command with a one-time tool version, ignoring the current configuration"
+    )]
     Run {
         /// The tool and version to run with (e.g., "go@1.23.0")
         tool: String,
         /// The arguments to pass to the command
-        #[arg(last = true)]
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
     #[command(about = "Execute a command using the currently active tool version")]
@@ -42,7 +44,7 @@ pub enum Commands {
         /// The tool to execute (e.g., "go")
         tool: String,
         /// The arguments to pass to the command
-        #[arg(last = true)]
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
     #[command(about = "Pin a tool version to the current project (.golta.json)")]
@@ -51,10 +53,7 @@ pub enum Commands {
         tool: String,
     },
     #[command(about = "Unpin the tool version from the current project")]
-    Unpin {
-        /// The tool to unpin (e.g., "go")
-        tool: String,
-    },
+    Unpin,
     #[command(about = "Display the full path to the currently active tool executable")]
     Which {
         /// The tool to find (e.g., "go")
@@ -85,7 +84,7 @@ async fn main() {
         Commands::Run { tool, args } => run::run(tool, args),
         Commands::Exec { tool, args } => exec::run(tool, args),
         Commands::Pin { tool } => pin::run(tool),
-        Commands::Unpin { tool } => unpin::run(tool),
+        Commands::Unpin => unpin::run(),
         Commands::Which { tool } => which::run(tool),
         Commands::List => list::run(),
         Commands::Completions { shell } => completions::run(shell),
