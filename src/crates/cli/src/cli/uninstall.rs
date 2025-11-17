@@ -1,0 +1,43 @@
+use std::error::Error;
+use std::fs;
+
+pub fn run(tool: String) {
+    if let Err(e) = uninstall_go(&tool) {
+        eprintln!("Error: {}", e);
+    }
+}
+fn uninstall_go(tool: &str) -> Result<(), Box<dyn Error>> {
+    if !tool.starts_with("go@") {
+        return Err("Only Go uninstall is supported currently. Use format 'go@<version>'.".into());
+    }
+
+    let version = tool.trim_start_matches("go@");
+
+    // `home::home_dir` を使ってクロスプラットフォームでホームディレクトリを安全に取得
+    let home = home::home_dir().ok_or("Could not find home directory")?;
+    let golta_dir = home.join(".golta");
+    let version_dir = golta_dir
+        .join("versions")
+        .join(version);
+
+    if !version_dir.exists() {
+        return Err(format!("Go {} is not installed.", version).into());
+    }
+
+    // default バージョンと同じ場合は警告
+    let default_file = golta_dir
+        .join("state")
+        .join("default.txt");
+    if let Ok(default_version) = fs::read_to_string(&default_file) {
+        if default_version.trim().trim_start_matches("go@") == version {
+            println!("Warning: Go {} is currently set as default.", version);
+            println!("Consider setting a new default version with `golta default go@<other_version>`.");
+        }
+    }
+
+    // バージョン削除
+    fs::remove_dir_all(&version_dir)?;
+    println!("Go {} has been uninstalled.", version);
+
+    Ok(())
+}

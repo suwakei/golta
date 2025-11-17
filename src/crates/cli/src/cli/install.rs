@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::Cursor;
-use std::path::{Path};
+use std::path::Path;
 use zip::ZipArchive;
 
 #[cfg(target_os = "windows")]
@@ -19,7 +19,9 @@ pub async fn run(tool: String) {
 
 async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
     if !tool.starts_with("go@") {
-        return Err("Only Go installation is supported currently. Use format 'go@<version>'.".into());
+        return Err(
+            "Only Go installation is supported currently. Use format 'go@<version>'.".into(),
+        );
     }
 
     let version = tool.trim_start_matches("go@");
@@ -27,10 +29,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     // `home::home_dir` を使ってクロスプラットフォームでホームディレクトリを取得
     let home = home::home_dir().ok_or("Could not find home directory")?;
-    let install_dir = home
-        .join(".golta")
-        .join("versions")
-        .join(version);
+    let install_dir = home.join(".golta").join("versions").join(version);
 
     if install_dir.exists() {
         println!("Go {} is already installed.", version);
@@ -46,7 +45,10 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
     #[cfg(target_os = "windows")]
     let archive_format = "zip";
 
-    let url = format!("https://golang.org/dl/go{}.{}.{}", version, OS, archive_format);
+    let url = format!(
+        "https://golang.org/dl/go{}.{}.{}",
+        version, OS, archive_format
+    );
     println!("Downloading {} ...", url);
 
     let response = reqwest::get(&url).await?.error_for_status()?;
@@ -89,7 +91,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 fn extract_zip(bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     let cursor = Cursor::new(bytes);
     let mut zip = ZipArchive::new(cursor)?;
-    
+
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
 
