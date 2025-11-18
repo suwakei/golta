@@ -26,7 +26,10 @@ fn uninstall_go(tool: &str) -> Result<(), Box<dyn Error>> {
     let default_file = golta_dir.join("state").join("default.txt");
     if let Ok(default_version) = fs::read_to_string(&default_file) {
         if default_version.trim().trim_start_matches("go@") == version {
-            let error_message = format!("cannot uninstall {} because it is the default version.", tool);
+            let error_message = format!(
+                "cannot uninstall {} because it is the default version.",
+                tool
+            );
             let hint = "hint: run `golta default clear` or change default before uninstalling.";
             return Err(format!("{}\n{}", error_message, hint).into());
         }

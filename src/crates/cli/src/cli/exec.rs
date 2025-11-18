@@ -40,11 +40,8 @@ fn exec_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
 
         // 1b. ピン留めされていなければ、グローバルなデフォルトバージョンを読む
         pinned_version.unwrap_or_else(|| {
-            let default_path = home::home_dir().map(|home| {
-                home.join(".golta")
-                    .join("state")
-                    .join("default.txt")
-            });
+            let default_path =
+                home::home_dir().map(|home| home.join(".golta").join("state").join("default.txt"));
             default_path
                 .and_then(|path| fs::read_to_string(path).ok())
                 .unwrap_or_default()

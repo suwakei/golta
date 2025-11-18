@@ -9,7 +9,6 @@ pub fn run() {
 }
 
 fn unpin_go() -> Result<(), Box<dyn Error>> {
-
     let pin_file = env::current_dir()?.join(".golta.json");
 
     if pin_file.exists() {

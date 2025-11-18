@@ -51,6 +51,9 @@ pub enum Commands {
     Pin {
         /// The tool and version to pin (e.g., "go@1.23.0")
         tool: String,
+        /// Automatically update the 'go' version in go.mod
+        #[arg(long, default_value_t = true)]
+        update_go_mod: bool,
     },
     #[command(about = "Unpin the tool version from the current project")]
     Unpin,
@@ -83,7 +86,10 @@ async fn main() {
         Commands::Default { tool } => default::run(tool),
         Commands::Run { tool, args } => run::run(tool, args),
         Commands::Exec { tool, args } => exec::run(tool, args),
-        Commands::Pin { tool } => pin::run(tool),
+        Commands::Pin {
+            tool,
+            update_go_mod,
+        } => pin::run(tool, update_go_mod),
         Commands::Unpin => unpin::run(),
         Commands::Which { tool } => which::run(tool),
         Commands::List => list::run(),

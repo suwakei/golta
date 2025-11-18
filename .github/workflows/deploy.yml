@@ -1,3 +1,10 @@
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+name: Deploy
+
 env:
   RELEASE_DIR: release
 
@@ -6,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v2
-      - uses: docker/build-push-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
         with:
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -41,7 +48,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
       - run: cargo install --locked cargo-wix --root ./cargo-cache
       - run: cargo wix --nocapture --package volta --output target\wix\volta-windows.msi
       - run: powershell Compress-Archive -Path target/release/volta.exe,target/release/volta-shim.exe,target/release/volta-migrate.exe -DestinationPath target/release/volta-windows.zip
@@ -53,7 +60,6 @@ jobs:
   release:
     needs: [linux, linux-arm, windows]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
       - name: Determine version
@@ -61,17 +67,9 @@ jobs:
         run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       - uses: actions/download-artifact@v4
         with:
-          name: linux
           path: ${{ env.RELEASE_DIR }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: linux-arm
-          path: ${{ env.RELEASE_DIR }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows
-          path: ${{ env.RELEASE_DIR }}
-      - uses: actions/create-release@v1
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,9 +77,8 @@ jobs:
           tag_name: ${{ github.ref }}
           release_name: ${{ github.ref }}
           draft: true
-      - uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release/volta-linux.tar.gz
-          asset_name: volta-${{ steps.release_info.outputs.version }}-linux.tar.gz
-          asset_content_type: application/gzip
+          files: |
+            ${{ env.RELEASE_DIR }}/linux/volta-linux.tar.gz
+            ${{ env.RELEASE_DIR }}/linux-arm/volta-linux-arm.tar.gz
+            ${{ env.RELEASE_DIR }}/windows/volta-windows.zip
+          fail_on_unmatched_files: true

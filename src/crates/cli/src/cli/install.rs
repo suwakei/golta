@@ -1,8 +1,11 @@
+use futures_util::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
+use serde::Deserialize;
 use std::error::Error;
+use std::fs;
 use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
-use serde::Deserialize;
 use zip::ZipArchive;
 
 #[cfg(target_os = "windows")]
@@ -43,7 +46,9 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         println!("Latest stable version is {}", version_number);
         version_number.to_string()
     } else {
-        return Err("Invalid format. Use `golta install go` or `golta install go@<version>`.".into());
+        return Err(
+            "Invalid format. Use `golta install go` or `golta install go@<version>`.".into(),
+        );
     };
 
     println!("Installing Go version {}", version);
@@ -57,7 +62,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    std::fs::create_dir_all(&install_dir)?;
+    fs::create_dir_all(&install_dir)?;
 
     // ダウンロード URL
     // Windows以外では .tar.gz を使うように修正
@@ -72,10 +77,36 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
     );
     println!("Downloading {} ...", url);
 
-    let response = reqwest::get(&url).await?.error_for_status()?;
-    let bytes = response.bytes().await?;
+    let response = reqwest::get(&url).await?.error_for_status()?; // 4xx, 5xx エラーをチェック
+
+    let total_size = response
+        .content_length()
+        .ok_or_else(|| format!("Failed to get content length from {}", &url))?;
+
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")?
+        .progress_chars("#>-"));
+
+    // u64からusizeへの安全な変換を試みる
+    let capacity = total_size
+        .try_into()
+        .map_err(|_| "File size is too large to fit in memory on this system.".to_string())?;
+    let mut downloaded_bytes = Vec::with_capacity(capacity);
+    let mut stream = response.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        downloaded_bytes.extend_from_slice(&chunk);
+        pb.inc(chunk.len() as u64);
+    }
+
+    pb.finish_with_message("Downloaded");
+
+    let bytes = downloaded_bytes;
 
     // OS ごとに展開
+    println!("Extracting...");
     #[cfg(target_os = "windows")]
     {
         extract_zip(&bytes, &install_dir)?;
@@ -83,25 +114,15 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        use std::process::Command;
-        // tar.gzを展開するライブラリを使うことで、tarコマンドへの依存をなくせる
-        let temp_dir = tempfile::tempdir()?;
-        let tar_path = temp_dir.path().join(format!("go{}.tar.gz", &version));
-        std::fs::write(&tar_path, &bytes)?;
-
-        let status = Command::new("tar")
-            .args([
-                "-xzf",
-                tar_path.to_str().ok_or("Invalid path")?,
-                "-C",
-                install_dir.to_str().ok_or("Invalid path")?,
-                "--strip-components=1",
-            ])
-            .status()?;
-
-        if !status.success() {
-            return Err("Failed to extract Go tarball. Is 'tar' command installed?".into());
-        }
+        use flate2::read::GzDecoder;
+        use tar::Archive;
+        let tar_gz_cursor = Cursor::new(&bytes);
+        let tar = GzDecoder::new(tar_gz_cursor);
+        let mut archive = Archive::new(tar);
+        // go/ 以下に展開されるため、展開先のディレクトリを調整
+        let temp_extract_dir = install_dir.join("go_temp");
+        archive.unpack(&temp_extract_dir)?;
+        fs::rename(temp_extract_dir.join("go"), install_dir.join("go"))?;
     }
 
     println!("Go {} installed to {:?}", version, install_dir);
@@ -116,19 +137,19 @@ fn extract_zip(bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
 
-        // strip_prefixで先頭の "go/" ディレクトリを取り除く
-        let outpath = match file.name().strip_prefix("go/") {
-            Some(p) => dest.join(p),
-            None => continue, // "go/" で始まらないエントリはスキップ
+        // `go/` ディレクトリ内に展開する
+        let outpath = dest.join("go").join(file.name());
+        if file.name().is_empty() {
+            continue;
         };
 
         if file.is_dir() {
-            std::fs::create_dir_all(&outpath)?;
+            fs::create_dir_all(&outpath)?;
         } else {
             if let Some(p) = outpath.parent() {
-                std::fs::create_dir_all(p)?;
+                fs::create_dir_all(p)?;
             }
-            std::io::copy(&mut file, &mut File::create(&outpath)?)?;
+            std::io::copy(&mut file, &mut File::create(outpath)?)?; // セミコロンを追加
         }
     }
 
