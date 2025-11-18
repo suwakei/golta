@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/suwakei/golta/actions/workflows/test.yml"><img src="https://github.com/suwakei/golta/actions/workflows/test.yml/badge.svg" alt="Test Status"></a>
-  <a href="https://github.com/suwakei/golta/actions/workflows/lint.yml"><img src="https://github.com/suwakei/golta/actions/workflows/lint.yml/badge.svg" alt="Lint Status"></a>
+  <a href="https://github.com/suwakei/golta/actions/workflows/clippy.yml"><img src="https://github.com/suwakei/golta/actions/workflows/clippy.yml/badge.svg" alt="Clippy Status"></a>
   <a href="https://github.com/suwakei/golta/releases"><img src="https://img.shields.io/github/v/release/suwakei/golta" alt="GitHub release"></a>
   <a href="https://github.com/suwakei/golta/blob/main/LICENSE"><img src="https://img.shields.io/github/license/suwakei/golta" alt="License"></a>
 </p>

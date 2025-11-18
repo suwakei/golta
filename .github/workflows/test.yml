@@ -26,7 +26,7 @@ jobs:
         with:
           profile: minimal
       - name: Run tests
-        run: cargo test --all --all-features --features mock-network
+        run: cargo test --workspace --all-features --features mock-network
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -38,25 +38,32 @@ jobs:
         os:
           - ubuntu
           - macos
+          - windows
     env:
       RUST_BACKTRACE: full
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Run smoke tests
-        run: cargo test --test smoke --features smoke-tests -- --test-threads 1
+        run: cargo test -p golta-cli --test smoke --features smoke-tests -- --test-threads 1
 
   shell-tests:
     name: Shell Script Tests
     runs-on: ubuntu-latest
     steps:
-      - name: Setup BATS with cache
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm-global
-          key: bats-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - run: npm install -g bats
       - uses: actions/checkout@v4
+      - name: Cache BATS
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/bats
+          key: ${{ runner.os }}-bats-v1.11.0
+      - name: Install BATS
+        run: |
+          if [ ! -d "/usr/local/lib/bats" ]; then
+            git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+            cd /tmp/bats-core
+            ./install.sh /usr/local
+          fi
       - name: Run shell tests
         run: bats dev/unix/tests/
 
@@ -70,7 +77,7 @@ jobs:
 
   validate-installer-checksum:
     name: Validate installer checksum
-    runs-on: ${{ matrix.os || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.os }}-latest
     strategy:
       matrix:
         os:
@@ -86,4 +93,3 @@ jobs:
             cd dev/unix
             sha256sum --check SHASUMS256.txt
           fi
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
