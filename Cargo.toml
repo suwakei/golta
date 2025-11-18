@@ -3,3 +3,4 @@ members = [
     "src/crates/cli",
     "src/crates/shim"
 ]
+resolver = "2"
