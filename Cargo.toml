@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "src\\crates\\cli",
-    "src\\crates\\shim"
+    "src/crates/cli",
+    "src/crates/shim"
 ]
