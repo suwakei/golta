@@ -52,6 +52,6 @@ fn handle_default(cmd: DefaultCommand) -> Result<(), Box<dyn Error>> {
 
 fn get_state_dir() -> Result<PathBuf, Box<dyn Error>> {
     let home = home::home_dir().ok_or("Could not find home directory")?;
-    let state_dir = PathBuf::from(home).join(".golta").join("state");
+    let state_dir = home.join(".golta").join("state");
     Ok(state_dir)
 }

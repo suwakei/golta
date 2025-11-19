@@ -41,53 +41,6 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     let version = resolve_go_version(version_spec).await?;
 
-    async fn resolve_go_version(spec: &str) -> Result<String, Box<dyn Error>> {
-        println!("Finding matching Go version for \"{}\"...", spec);
-        let versions: Vec<GoVersionInfo> = reqwest::get("https://go.dev/dl/?mode=json")
-            .await?
-            .json()
-            .await?;
-
-        if spec == "latest" {
-            let latest_stable = versions
-                .into_iter()
-                .find(|v| v.stable)
-                .ok_or("Could not find a stable Go version.")?;
-            return Ok(latest_stable.version.trim_start_matches("go").to_string());
-        }
-
-        let available_versions: Vec<Version> = versions
-            .iter()
-            .filter_map(|v| Version::parse(v.version.trim_start_matches("go")).ok())
-            .collect();
-
-        // If a full version is specified, check for an exact match.
-        if spec.matches('.').count() == 2 {
-            let requested_version = Version::parse(spec)?;
-            if available_versions.contains(&requested_version) {
-                println!("Found exact match for version: {}", requested_version);
-                return Ok(requested_version.to_string());
-            } else {
-                return Err(format!("Go version {} not found.", spec).into());
-            }
-        }
-
-        // If a partial version is specified, find the latest matching patch version.
-        let req = VersionReq::parse(&format!("~{}", spec))?;
-        let matching_version = available_versions
-            .into_iter()
-            .filter(|v| req.matches(v))
-            .max();
-
-        match matching_version {
-            Some(v) => {
-                println!("Found matching version: {}", v);
-                Ok(v.to_string())
-            }
-            None => Err(format!("No matching Go version found for spec '{}'", spec).into()),
-        }
-    }
-
     println!("Installing Go version {}", version);
 
     // Use `home::home_dir` to get the home directory in a cross-platform way
@@ -166,7 +119,55 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn resolve_go_version(spec: &str) -> Result<String, Box<dyn Error>> {
+    println!("Finding matching Go version for \"{}\"...", spec);
+    let versions: Vec<GoVersionInfo> = reqwest::get("https://go.dev/dl/?mode=json")
+        .await?
+        .json()
+        .await?;
+
+    if spec == "latest" {
+        let latest_stable = versions
+            .into_iter()
+            .find(|v| v.stable)
+            .ok_or("Could not find a stable Go version.")?;
+        return Ok(latest_stable.version.trim_start_matches("go").to_string());
+    }
+
+    let available_versions: Vec<Version> = versions
+        .iter()
+        .filter_map(|v| Version::parse(v.version.trim_start_matches("go")).ok())
+        .collect();
+
+    // If a full version is specified, check for an exact match.
+    if spec.matches('.').count() == 2 {
+        let requested_version = Version::parse(spec)?;
+        if available_versions.contains(&requested_version) {
+            println!("Found exact match for version: {}", requested_version);
+            return Ok(requested_version.to_string());
+        } else {
+            return Err(format!("Go version {} not found.", spec).into());
+        }
+    }
+
+    // If a partial version is specified, find the latest matching patch version.
+    let req = VersionReq::parse(&format!("~{}", spec))?;
+    let matching_version = available_versions
+        .into_iter()
+        .filter(|v| req.matches(v))
+        .max();
+
+    match matching_version {
+        Some(v) => {
+            println!("Found matching version: {}", v);
+            Ok(v.to_string())
+        }
+        None => Err(format!("No matching Go version found for spec '{}'", spec).into()),
+    }
+}
+
 /// Extracts a byte slice as a zip archive
+#[cfg(windows)]
 fn extract_zip(bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     let cursor = Cursor::new(bytes);
     let mut zip = ZipArchive::new(cursor)?;
