@@ -3,26 +3,26 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
-// テスト対象のGoのバージョン
+// Go versions to use for testing
 const GO_VERSION: &str = "1.22.0";
 const GO_VERSION_ALT: &str = "1.21.0";
 
-/// スモークテストのセットアップとクリーンアップを管理する構造体
+/// A struct to manage setup and cleanup for smoke tests
 struct SmokeTest {
-    /// `golta`が使用する一時的なホームディレクトリ
+    /// A temporary home directory for `golta` to use
     home_dir: TempDir,
-    /// テスト中にインストールしたバージョンを記録
+    /// Records the versions installed during the test
     installed_versions: Vec<String>,
-    /// `golta`実行ファイルのパス
+    /// The path to the `golta` executable
     golta_bin: String,
 }
 
 impl SmokeTest {
-    /// テスト環境をセットアップする
+    /// Sets up the test environment
     fn setup() -> Self {
-        // `cargo test`によってビルドされた`golta`バイナリのパスを取得
+        // Get the path to the `golta` binary built by `cargo test`
         let golta_bin = env!("CARGO_BIN_EXE_golta").to_string();
-        // テスト専用の一時的なホームディレクトリを作成
+        // Create a temporary home directory for testing
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
         let mut test = SmokeTest {
@@ -31,14 +31,14 @@ impl SmokeTest {
             golta_bin,
         };
 
-        // テストで使うGoのバージョンをインストール
+        // Install the Go versions to be used in the test
         test.install_version(GO_VERSION);
         test.install_version(GO_VERSION_ALT);
 
         test
     }
 
-    /// `golta`コマンドを実行するヘルパー
+    /// Helper to execute a `golta` command
     fn golta(&self, args: &[&str]) -> Output {
         Command::new(&self.golta_bin)
             .args(args)
@@ -49,7 +49,7 @@ impl SmokeTest {
             .expect("Failed to execute command")
     }
 
-    /// 指定したディレクトリで`golta`コマンドを実行するヘルパー
+    /// Helper to execute a `golta` command in a specific directory
     fn golta_in_dir(&self, args: &[&str], dir: &Path) -> Output {
         Command::new(&self.golta_bin)
             .args(args)
@@ -61,7 +61,7 @@ impl SmokeTest {
             .expect("Failed to execute command in dir")
     }
 
-    /// 指定したバージョンをインストールするヘルパー
+    /// Helper to install a specific version
     fn install_version(&mut self, version: &str) {
         let tool_version = format!("go@{}", version);
         let output = self.golta(&["install", &tool_version]);
@@ -77,16 +77,20 @@ impl SmokeTest {
 }
 
 impl Drop for SmokeTest {
-    /// テスト終了時に`uninstall`を実行してクリーンアップする
+    /// Runs `uninstall` to clean up when the test finishes
     fn drop(&mut self) {
-        // `default`をクリアしてからアンインストール
+        // Clear `default` before uninstalling
         self.golta(&["default", "clear"]);
 
         for tool_version in &self.installed_versions {
             let output = self.golta(&["uninstall", tool_version]);
-            // 失敗しても他のクリーンアップは続行する
+            // Continue with other cleanups even if one fails
             if !output.status.success() {
-                eprintln!("Failed to uninstall {}: {}", tool_version, String::from_utf8_lossy(&output.stderr));
+                eprintln!(
+                    "Failed to uninstall {}: {}",
+                    tool_version,
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
         }
     }
@@ -96,11 +100,11 @@ impl Drop for SmokeTest {
 fn test_exec_go_version() {
     let test = SmokeTest::setup();
 
-    // `default`を設定
+    // Set the `default` version
     let tool_version = format!("go@{}", GO_VERSION);
     test.golta(&["default", &tool_version]);
 
-    // `exec`でバージョンを確認
+    // Check the version with `exec`
     let output = test.golta(&["exec", "go", "version"]);
     let stdout = String::from_utf8(output.stdout).unwrap();
 
@@ -111,31 +115,31 @@ fn test_exec_go_version() {
 fn test_pin_and_unpin() {
     let test = SmokeTest::setup();
 
-    // グローバルデフォルトを設定
+    // Set the global default
     let default_tool_version = format!("go@{}", GO_VERSION);
     test.golta(&["default", &default_tool_version]);
 
-    // プロジェクト用のサブディレクトリを作成
+    // Create a subdirectory for the project
     let project_dir = test.home_dir.path().join("my-project");
     std::fs::create_dir(&project_dir).unwrap();
 
-    // 別のバージョンをプロジェクトにピン留め
+    // Pin a different version to the project
     let pin_tool_version = format!("go@{}", GO_VERSION_ALT);
     let output = test.golta_in_dir(&["pin", &pin_tool_version], &project_dir);
     assert!(output.status.success());
     assert!(project_dir.join(".golta.json").exists());
 
-    // プロジェクト内ではピン留めしたバージョンが使われることを確認
+    // Confirm that the pinned version is used within the project
     let output = test.golta_in_dir(&["exec", "go", "version"], &project_dir);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains(&format!("go version go{}", GO_VERSION_ALT)));
 
-    // ピン留めを解除
+    // Unpin the version
     let output = test.golta_in_dir(&["unpin"], &project_dir);
     assert!(output.status.success());
     assert!(!project_dir.join(".golta.json").exists());
 
-    // プロジェクト内でもグローバルデフォルトに戻ることを確認
+    // Confirm that it reverts to the global default within the project
     let output = test.golta_in_dir(&["exec", "go", "version"], &project_dir);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains(&format!("go version go{}", GO_VERSION)));
@@ -145,15 +149,17 @@ fn test_pin_and_unpin() {
 fn test_which_shows_correct_path() {
     let test = SmokeTest::setup();
 
-    // `default`を設定
+    // Set the `default` version
     let tool_version = format!("go@{}", GO_VERSION);
     test.golta(&["default", &tool_version]);
 
-    // `which`でパスを確認
+    // Check the path with `which`
     let output = test.golta(&["which", "go"]);
     let stdout = String::from_utf8(output.stdout).unwrap();
 
-    let expected_path_fragment = test.home_dir.path()
+    let expected_path_fragment = test
+        .home_dir
+        .path()
         .join(".golta")
         .join("versions")
         .join(GO_VERSION);
