@@ -17,6 +17,7 @@ pub enum Commands {
     #[command(about = "Download and install a tool version (e.g., go@1.23.0)", aliases = &["i", "fetch"])]
     Install {
         /// The tool and version to install (e.g., "go@1.23.0")
+        #[arg(default_value = "go")]
         tool: String,
     },
     #[command(about = "Uninstall a specific version of a tool", alias = "un")]
@@ -24,11 +25,8 @@ pub enum Commands {
         /// The tool and version to uninstall (e.g., "go@1.23.0")
         tool: String,
     },
-    #[command(about = "Set the global default version for a tool")]
-    Default {
-        /// The tool and version to set as default (e.g., "go@1.23.0")
-        tool: String,
-    },
+    #[command(about = "Manage the global default version for a tool")]
+    Default(DefaultCommand),
     #[command(
         about = "Run a command with a one-time tool version, ignoring the current configuration"
     )]
@@ -76,6 +74,21 @@ pub enum Commands {
     Version,
 }
 
+#[derive(Parser)]
+pub struct DefaultCommand {
+    #[command(subcommand)]
+    command: Option<DefaultCommands>,
+    /// The tool and version to set as default (e.g., "go@1.23.0")
+    #[arg(required_unless_present = "command")]
+    tool: Option<String>,
+}
+
+#[derive(Subcommand)]
+pub enum DefaultCommands {
+    #[command(about = "Clear the global default version")]
+    Clear,
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -83,7 +96,7 @@ async fn main() {
     match cli.command {
         Commands::Install { tool } => install::run(tool).await,
         Commands::Uninstall { tool } => uninstall::run(tool),
-        Commands::Default { tool } => default::run(tool),
+        Commands::Default(cmd) => default::run(cmd),
         Commands::Run { tool, args } => run::run(tool, args),
         Commands::Exec { tool, args } => exec::run(tool, args),
         Commands::Pin {

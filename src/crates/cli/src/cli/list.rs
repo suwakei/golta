@@ -8,15 +8,15 @@ pub fn run() {
 }
 
 fn list_go_versions() -> Result<(), Box<dyn Error>> {
-    // `home::home_dir` を使ってクロスプラットフォームでホームディレクトリを安全に取得
+    // Use `home::home_dir` to safely get the home directory in a cross-platform way
     let home = home::home_dir().ok_or("Could not find home directory")?;
     let golta_dir = home.join(".golta");
     let versions_dir = golta_dir.join("versions");
     let default_file = golta_dir.join("state").join("default.txt");
 
-    // デフォルトバージョンを読み込む。ファイルがなくてもエラーにしない
+    // Read the default version. Do not error if the file does not exist.
     let default_version = fs::read_to_string(default_file).ok();
-    // `trim()`で前後の空白を削除し、`trim_start_matches`でプレフィックスを削除
+    // `trim()` to remove surrounding whitespace, `trim_start_matches` to remove the prefix
     let default_version_name = default_version
         .as_deref()
         .map(|s| s.trim().trim_start_matches("go@"));

@@ -4,7 +4,7 @@ use std::fs;
 use std::process::Command;
 
 pub fn run(tool: String, args: Vec<String>) {
-    // エラーが発生した場合は、メッセージを表示して終了する
+    // If an error occurs, print a message and exit.
     if let Err(e) = exec_go(&tool, &args) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
@@ -16,9 +16,9 @@ fn exec_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
         return Err("Only `go` is supported for exec currently.".into());
     }
 
-    // 1. 実行すべきGoのバージョンを特定する (which と同じロジック)
+    // 1. Determine the Go version to execute (same logic as `which`).
     let version_str = {
-        // 1a. プロジェクトでピン留めされたバージョンを探す
+        // 1a. Look for a version pinned in the project.
         let mut current_dir = env::current_dir()?;
         let mut pinned_version = None;
 
@@ -38,7 +38,7 @@ fn exec_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        // 1b. ピン留めされていなければ、グローバルなデフォルトバージョンを読む
+        // 1b. If not pinned, read the global default version.
         pinned_version.unwrap_or_else(|| {
             let default_path =
                 home::home_dir().map(|home| home.join(".golta").join("state").join("default.txt"));
@@ -63,8 +63,8 @@ fn exec_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
         .join("bin")
         .join(go_executable_name);
 
-    let status = Command::new(go_path).args(args).status()?; // `?` 演算子でI/Oエラーをハンドリング
+    let status = Command::new(go_path).args(args).status()?; // Handle I/O errors with the `?` operator.
 
-    // 子プロセスの終了コードをそのまま終了コードとして使う
+    // Use the exit code of the child process as our own.
     std::process::exit(status.code().unwrap_or(1));
 }

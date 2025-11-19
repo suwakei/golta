@@ -1,5 +1,6 @@
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::error::Error;
 use std::fs;
@@ -28,32 +29,68 @@ pub async fn run(tool: String) {
 }
 
 async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
-    let version = if tool.starts_with("go@") {
-        tool.trim_start_matches("go@").to_string()
+    let version_spec = if tool.starts_with("go@") {
+        tool.trim_start_matches("go@")
     } else if tool == "go" {
-        println!("Finding latest stable Go version...");
-        let versions: Vec<GoVersionInfo> = reqwest::get("https://go.dev/dl/?mode=json")
-            .await?
-            .json()
-            .await?;
-
-        let latest_stable = versions
-            .into_iter()
-            .find(|v| v.stable)
-            .ok_or("Could not find a stable Go version.")?;
-
-        let version_number = latest_stable.version.trim_start_matches("go");
-        println!("Latest stable version is {}", version_number);
-        version_number.to_string()
+        "latest"
     } else {
         return Err(
             "Invalid format. Use `golta install go` or `golta install go@<version>`.".into(),
         );
     };
 
+    let version = resolve_go_version(version_spec).await?;
+
+    async fn resolve_go_version(spec: &str) -> Result<String, Box<dyn Error>> {
+        println!("Finding matching Go version for \"{}\"...", spec);
+        let versions: Vec<GoVersionInfo> = reqwest::get("https://go.dev/dl/?mode=json")
+            .await?
+            .json()
+            .await?;
+
+        if spec == "latest" {
+            let latest_stable = versions
+                .into_iter()
+                .find(|v| v.stable)
+                .ok_or("Could not find a stable Go version.")?;
+            return Ok(latest_stable.version.trim_start_matches("go").to_string());
+        }
+
+        let available_versions: Vec<Version> = versions
+            .iter()
+            .filter_map(|v| Version::parse(v.version.trim_start_matches("go")).ok())
+            .collect();
+
+        // If a full version is specified, check for an exact match.
+        if spec.matches('.').count() == 2 {
+            let requested_version = Version::parse(spec)?;
+            if available_versions.contains(&requested_version) {
+                println!("Found exact match for version: {}", requested_version);
+                return Ok(requested_version.to_string());
+            } else {
+                return Err(format!("Go version {} not found.", spec).into());
+            }
+        }
+
+        // If a partial version is specified, find the latest matching patch version.
+        let req = VersionReq::parse(&format!("~{}", spec))?;
+        let matching_version = available_versions
+            .into_iter()
+            .filter(|v| req.matches(v))
+            .max();
+
+        match matching_version {
+            Some(v) => {
+                println!("Found matching version: {}", v);
+                Ok(v.to_string())
+            }
+            None => Err(format!("No matching Go version found for spec '{}'", spec).into()),
+        }
+    }
+
     println!("Installing Go version {}", version);
 
-    // `home::home_dir` を使ってクロスプラットフォームでホームディレクトリを取得
+    // Use `home::home_dir` to get the home directory in a cross-platform way
     let home = home::home_dir().ok_or("Could not find home directory")?;
     let install_dir = home.join(".golta").join("versions").join(&version);
 
@@ -64,8 +101,8 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     fs::create_dir_all(&install_dir)?;
 
-    // ダウンロード URL
-    // Windows以外では .tar.gz を使うように修正
+    // Download URL
+    // Use .tar.gz for non-Windows OS
     #[cfg(not(target_os = "windows"))]
     let archive_format = "tar.gz";
     #[cfg(target_os = "windows")]
@@ -77,7 +114,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
     );
     println!("Downloading {} ...", url);
 
-    let response = reqwest::get(&url).await?.error_for_status()?; // 4xx, 5xx エラーをチェック
+    let response = reqwest::get(&url).await?.error_for_status()?; // Check for 4xx, 5xx errors
 
     let total_size = response
         .content_length()
@@ -88,7 +125,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")?
         .progress_chars("#>-"));
 
-    // u64からusizeへの安全な変換を試みる
+    // Try to safely convert u64 to usize
     let capacity = total_size
         .try_into()
         .map_err(|_| "File size is too large to fit in memory on this system.".to_string())?;
@@ -105,7 +142,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     let bytes = downloaded_bytes;
 
-    // OS ごとに展開
+    // Extract based on OS
     println!("Extracting...");
     #[cfg(target_os = "windows")]
     {
@@ -119,7 +156,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         let tar_gz_cursor = Cursor::new(&bytes);
         let tar = GzDecoder::new(tar_gz_cursor);
         let mut archive = Archive::new(tar);
-        // go/ 以下に展開されるため、展開先のディレクトリを調整
+        // Since it's extracted into `go/`, adjust the destination directory
         let temp_extract_dir = install_dir.join("go_temp");
         archive.unpack(&temp_extract_dir)?;
         fs::rename(temp_extract_dir.join("go"), install_dir.join("go"))?;
@@ -129,7 +166,7 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// バイト列を zip として展開
+/// Extracts a byte slice as a zip archive
 fn extract_zip(bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     let cursor = Cursor::new(bytes);
     let mut zip = ZipArchive::new(cursor)?;
@@ -137,7 +174,7 @@ fn extract_zip(bytes: &[u8], dest: &Path) -> std::io::Result<()> {
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
 
-        // `go/` ディレクトリ内に展開する
+        // Extract into the `go/` directory
         let outpath = dest.join("go").join(file.name());
         if file.name().is_empty() {
             continue;
@@ -149,7 +186,7 @@ fn extract_zip(bytes: &[u8], dest: &Path) -> std::io::Result<()> {
             if let Some(p) = outpath.parent() {
                 fs::create_dir_all(p)?;
             }
-            std::io::copy(&mut file, &mut File::create(outpath)?)?; // セミコロンを追加
+            std::io::copy(&mut file, &mut File::create(outpath)?)?;
         }
     }
 

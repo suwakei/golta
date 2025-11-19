@@ -2,7 +2,7 @@ use std::error::Error;
 use std::process::Command;
 
 pub fn run(tool: String, args: Vec<String>) {
-    // エラーが発生した場合は、メッセージを表示して終了する
+    // If an error occurs, print a message and exit.
     if let Err(e) = run_go(&tool, &args) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
@@ -16,7 +16,7 @@ fn run_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
 
     let version = tool.trim_start_matches("go@");
 
-    // `home::home_dir` を使ってクロスプラットフォームでホームディレクトリを安全に取得
+    // Use `home::home_dir` to safely get the home directory in a cross-platform way
     let home = home::home_dir().ok_or("Could not find home directory")?;
 
     let go_executable_name = if cfg!(windows) { "go.exe" } else { "go" };
@@ -27,8 +27,8 @@ fn run_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
         .join("bin")
         .join(go_executable_name);
 
-    let status = Command::new(go_path).args(args).status()?; // `?` 演算子でI/Oエラーをハンドリング
+    let status = Command::new(go_path).args(args).status()?; // Handle I/O errors with the `?` operator.
 
-    // 子プロセスの終了コードをそのまま終了コードとして使う
+    // Use the exit code of the child process as our own.
     std::process::exit(status.code().unwrap_or(1));
 }
