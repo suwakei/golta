@@ -41,19 +41,19 @@ fn parse_tool_version(tool: &str) -> Result<&str, Box<dyn Error>> {
     Ok(tool.trim_start_matches("go@"))
 }
 
-/// `DefaultManager` は、デフォルトバージョンの管理に関する操作を抽象化します。
-/// これにより、ファイルシステムへの依存を分離し、テストを容易にします。
+/// `DefaultManager` abstracts the operations for managing the default version.
+/// This decouples the dependency on the filesystem and makes testing easier.
 trait DefaultManager {
-    /// 指定されたバージョンをデフォルトとして設定します。
-    /// バージョンがインストールされていない場合はエラーを返します。
+    /// Sets the specified version as the default.
+    /// Returns an error if the version is not installed.
     fn set_default(&mut self, version: &str) -> Result<(), Box<dyn Error>>;
 
-    /// 設定されているデフォルトバージョンを解除します。
-    /// デフォルトが設定されていなかった場合は `Ok(false)` を返します。
+    /// Clears the currently set default version.
+    /// Returns `Ok(false)` if no default was set.
     fn clear_default(&mut self) -> Result<bool, Box<dyn Error>>;
 }
 
-/// `DefaultManager` のファイルシステム実装です。
+/// Filesystem implementation of `DefaultManager`.
 struct FsDefaultManager {
     state_dir: PathBuf,
 }
@@ -72,7 +72,7 @@ impl FsDefaultManager {
 
 impl DefaultManager for FsDefaultManager {
     fn set_default(&mut self, version: &str) -> Result<(), Box<dyn Error>> {
-        // バージョンがインストールされているかチェック
+        // Check if the version is installed
         let installed_versions = get_installed_versions()?;
         if !installed_versions.iter().any(|v| v == version) {
             return Err(format!(
