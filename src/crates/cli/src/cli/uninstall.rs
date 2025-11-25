@@ -1,3 +1,4 @@
+use crate::shared::pinned_version::find_pinned_go_version;
 use std::error::Error;
 use std::fs;
 
@@ -22,16 +23,25 @@ fn uninstall_go(tool: &str) -> Result<(), Box<dyn Error>> {
         return Err(format!("Go {} is not installed.", version).into());
     }
 
-    // Error if it's the same as the default version
+    // If it's the same as the default version, show a warning and clear the default.
     let default_file = golta_dir.join("state").join("default.txt");
-    if let Ok(default_version) = fs::read_to_string(&default_file) {
-        if default_version.trim().trim_start_matches("go@") == version {
-            let error_message = format!(
-                "cannot uninstall {} because it is the default version.",
-                tool
+    if default_file.exists() {
+        if let Ok(default_version) = fs::read_to_string(&default_file) {
+            if default_version.trim() == version {
+                println!("Warning: uninstalling the default Go version ({}). The global default will be cleared.", version);
+                fs::remove_file(&default_file)?;
+            }
+        }
+    }
+
+    // Check if the version is pinned in the current project structure and show a warning.
+    if let Some((pinned_version, pin_file_path)) = find_pinned_go_version()? {
+        if pinned_version == version {
+            println!(
+                "Warning: uninstalling version {}, which is pinned in {}",
+                version,
+                pin_file_path.display()
             );
-            let hint = "hint: run `golta default clear` or change default before uninstalling.";
-            return Err(format!("{}\n{}", error_message, hint).into());
         }
     }
 
