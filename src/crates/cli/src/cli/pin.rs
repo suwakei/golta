@@ -1,3 +1,4 @@
+use crate::shared::local_versions::get_installed_versions;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::error::Error;
@@ -20,6 +21,17 @@ fn pin_go_version(tool: &str) -> Result<(), Box<dyn Error>> {
     }
 
     let version = tool.trim_start_matches("go@");
+
+    // Check if the version is installed before pinning
+    let installed_versions = get_installed_versions()?;
+    if !installed_versions.iter().any(|v| v == version) {
+        return Err(format!(
+            "Go version '{}' is not installed. Please install it first with `golta install go@{}`.",
+            version, version
+        )
+        .into());
+    }
+
     let project_dir = env::current_dir()?;
     let pin_file = project_dir.join(".golta.json");
 
