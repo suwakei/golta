@@ -1,7 +1,7 @@
 mod cli;
 mod shared;
 
-use clap::{Parser, Subcommand};
+use clap::{command, Parser, Subcommand};
 use clap_complete::Shell;
 use cli::{
     completions, default, exec, install, list, list_remote, pin, run, setup, uninstall, unpin,
@@ -9,6 +9,7 @@ use cli::{
 };
 
 #[derive(Parser)]
+#[command(propagate_version = true)]
 #[command(name = "golta")]
 #[command(version, about = "Golta CLI - A fast, simple Go version manager", long_about = None)]
 pub struct Cli {
@@ -76,8 +77,6 @@ pub enum Commands {
     },
     #[command(about = "Configure your shell for Golta (run on first install)")]
     Setup,
-    #[command(about = "Show the version of Golta")]
-    Version,
 }
 
 #[derive(Parser)]
@@ -115,8 +114,5 @@ async fn main() {
         Commands::ListRemote => list_remote::run().await,
         Commands::Completions { shell } => completions::run(shell),
         Commands::Setup => setup::run(),
-        Commands::Version => {
-            println!("golta {}", env!("CARGO_PKG_VERSION"));
-        }
     }
 }
