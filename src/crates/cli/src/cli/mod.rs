@@ -3,6 +3,7 @@ pub mod default;
 pub mod exec;
 pub mod install;
 pub mod list;
+pub mod list_remote;
 pub mod pin;
 pub mod run;
 pub mod setup;

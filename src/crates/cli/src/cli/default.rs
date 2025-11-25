@@ -33,10 +33,11 @@ fn handle_default(cmd: DefaultCommand) -> Result<(), Box<dyn Error>> {
             let version = tool.trim_start_matches("go@");
 
             // Check if the version is installed before setting it as default
-            let home = home::home_dir().ok_or("Could not find home directory")?;
-            let version_dir = home.join(".golta").join("versions").join(version);
+            let installed_versions = get_installed_versions()?;
 
-            if !version_dir.exists() {
+            let version_exists = installed_versions.iter().any(|v| v == version);
+
+            if !version_exists {
                 return Err(format!("Go version {} is not installed. Please install it first with `golta install go@{}`.", version, version).into());
             }
 
@@ -54,4 +55,24 @@ fn get_state_dir() -> Result<PathBuf, Box<dyn Error>> {
     let home = home::home_dir().ok_or("Could not find home directory")?;
     let state_dir = home.join(".golta").join("state");
     Ok(state_dir)
+}
+
+fn get_installed_versions() -> Result<Vec<String>, Box<dyn Error>> {
+    let home = home::home_dir().ok_or("Could not find home directory")?;
+    let versions_dir = home.join(".golta").join("versions");
+
+    if !versions_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(versions_dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            if let Some(name) = entry.file_name().to_str() {
+                entries.push(name.to_string());
+            }
+        }
+    }
+    Ok(entries)
 }

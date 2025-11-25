@@ -1,26 +1,13 @@
+use crate::shared::os_info::OS;
+use crate::shared::versions::{fetch_remote_versions, GoVersionInfo};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
-use semver::{Version, VersionReq};
-use serde::Deserialize;
 use std::error::Error;
 use std::fs;
 use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
 use zip::ZipArchive;
-
-#[cfg(target_os = "windows")]
-const OS: &str = "windows-amd64";
-#[cfg(target_os = "linux")]
-const OS: &str = "linux-amd64";
-#[cfg(target_os = "macos")]
-const OS: &str = "darwin-amd64";
-
-#[derive(Deserialize, Debug)]
-struct GoVersionInfo {
-    version: String,
-    stable: bool,
-}
 
 pub async fn run(tool: String) {
     if let Err(e) = install_go(&tool).await {
@@ -51,8 +38,6 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         println!("Go {} is already installed.", version);
         return Ok(());
     }
-
-    fs::create_dir_all(&install_dir)?;
 
     // Download URL
     // Use .tar.gz for non-Windows OS
@@ -95,6 +80,9 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
     let bytes = downloaded_bytes;
 
+    // Create the directory only after a successful download
+    fs::create_dir_all(&install_dir)?;
+
     // Extract based on OS
     println!("Extracting...");
     #[cfg(target_os = "windows")]
@@ -121,48 +109,32 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
 
 async fn resolve_go_version(spec: &str) -> Result<String, Box<dyn Error>> {
     println!("Finding matching Go version for \"{}\"...", spec);
-    let versions: Vec<GoVersionInfo> = reqwest::get("https://go.dev/dl/?mode=json")
-        .await?
-        .json()
-        .await?;
+    let remote_versions: Vec<GoVersionInfo> = fetch_remote_versions().await?;
 
     if spec == "latest" {
-        let latest_stable = versions
+        let latest_stable = remote_versions
             .into_iter()
             .find(|v| v.stable)
             .ok_or("Could not find a stable Go version.")?;
         return Ok(latest_stable.version.trim_start_matches("go").to_string());
     }
 
-    let available_versions: Vec<Version> = versions
+    // Find an exact match for the specified version string.
+    let found_version = remote_versions
         .iter()
-        .filter_map(|v| Version::parse(v.version.trim_start_matches("go")).ok())
-        .collect();
+        .find(|v| v.version.trim_start_matches("go") == spec);
 
-    // If a full version is specified, check for an exact match.
-    if spec.matches('.').count() == 2 {
-        let requested_version = Version::parse(spec)?;
-        if available_versions.contains(&requested_version) {
-            println!("Found exact match for version: {}", requested_version);
-            return Ok(requested_version.to_string());
-        } else {
-            return Err(format!("Go version {} not found.", spec).into());
+    match found_version {
+        Some(info) => {
+            let version_str = info.version.trim_start_matches("go");
+            println!("Found matching version: {}", version_str);
+            Ok(version_str.to_string())
         }
-    }
-
-    // If a partial version is specified, find the latest matching patch version.
-    let req = VersionReq::parse(&format!("~{}", spec))?;
-    let matching_version = available_versions
-        .into_iter()
-        .filter(|v| req.matches(v))
-        .max();
-
-    match matching_version {
-        Some(v) => {
-            println!("Found matching version: {}", v);
-            Ok(v.to_string())
-        }
-        None => Err(format!("No matching Go version found for spec '{}'", spec).into()),
+        None => Err(format!(
+            "Go version '{}' not found. Please specify an exact version from `golta list-remote`.",
+            spec
+        )
+        .into()),
     }
 }
 

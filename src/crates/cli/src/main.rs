@@ -1,8 +1,12 @@
 mod cli;
+mod shared;
 
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
-use cli::{completions, default, exec, install, list, pin, run, setup, uninstall, unpin, which};
+use cli::{
+    completions, default, exec, install, list, list_remote, pin, run, setup, uninstall, unpin,
+    which,
+};
 
 #[derive(Parser)]
 #[command(name = "golta")]
@@ -62,6 +66,8 @@ pub enum Commands {
     },
     #[command(about = "List all installed versions", alias = "ls")]
     List,
+    #[command(about = "List available versions from go.dev", alias = "ls-remote")]
+    ListRemote,
     #[command(about = "Generate shell completion scripts")]
     Completions {
         /// The shell to generate completions for
@@ -106,6 +112,7 @@ async fn main() {
         Commands::Unpin => unpin::run(),
         Commands::Which { tool } => which::run(tool),
         Commands::List => list::run(),
+        Commands::ListRemote => list_remote::run().await,
         Commands::Completions { shell } => completions::run(shell),
         Commands::Setup => setup::run(),
         Commands::Version => {
