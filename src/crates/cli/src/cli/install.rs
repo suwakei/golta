@@ -94,7 +94,38 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         let mut archive = Archive::new(tar);
         // Since it's extracted into `go/`, adjust the destination directory
         let temp_extract_dir = install_dir.join("go_temp");
+
+        // Ensure the temporary extract directory exists
+        if !temp_extract_dir.exists() {
+            fs::create_dir_all(&temp_extract_dir)?;
+        }
+
+        // Disable unpacking symbolic links for security.
+        archive.set_unpack_permissions(false);
+        archive.set_preserve_mtime(false);
+
         archive.unpack(&temp_extract_dir)?;
+
+        let source_path = temp_extract_dir.join("go");
+        let destination_path = install_dir.join("go");
+
+        // Ensure the source directory exists before renaming
+        if !source_path.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Source directory not found",
+            )
+            .into());
+        }
+        // Ensure the destination directory does not exist before renaming
+        if destination_path.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "Destination directory already exists",
+            )
+            .into());
+        }
+
         fs::rename(temp_extract_dir.join("go"), install_dir.join("go"))?;
     }
 
