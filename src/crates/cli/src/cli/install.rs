@@ -1,4 +1,4 @@
-use crate::shared::os_info::OS;
+use crate::shared::os_info::get_os_arch_and_format;
 use crate::shared::versions::{fetch_remote_versions, GoVersionInfo};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -39,16 +39,11 @@ async fn install_go(tool: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    // Download URL
-    // Use .tar.gz for non-Windows OS
-    #[cfg(not(target_os = "windows"))]
-    let archive_format = "tar.gz";
-    #[cfg(target_os = "windows")]
-    let archive_format = "zip";
-
+    // Determine download URL components based on OS/Arch
+    let (os_arch, archive_format) = get_os_arch_and_format();
     let url = format!(
         "https://golang.org/dl/go{}.{}.{}",
-        &version, OS, archive_format
+        &version, os_arch, archive_format
     );
     println!("Downloading {} ...", url);
 
