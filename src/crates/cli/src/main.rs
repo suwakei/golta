@@ -112,7 +112,7 @@ async fn main() {
         Commands::Which { tool } => which::run(tool),
         Commands::List => list::run(),
         Commands::ListRemote => list_remote::run().await,
-        Commands::Completions { shell } => completions::run(shell),
+        Commands::Completions { shell } => completions::run(shell, &mut std::io::stdout()),
         Commands::Setup => setup::run(),
     }
 }
