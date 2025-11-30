@@ -17,14 +17,20 @@ jobs:
     strategy:
       matrix:
         include:
+          # Linux musl
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
           - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-musl
+
+          # macOS
           - os: macos-latest
             target: x86_64-apple-darwin
           - os: macos-latest
             target: aarch64-apple-darwin
+
+          # Windows
+          # build artifacts must be .exe
           - os: windows-latest
             target: x86_64-pc-windows-msvc
 
@@ -41,21 +47,35 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build release binaries
+      # aarch64 musl ビルドに必要
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl') && contains(matrix.target, 'aarch64')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Build binaries
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package artifacts
-        shell: bash
+      - name: Package artifacts (Unix)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/golta dist/
           cd dist
           tar czf "${{ env.ARCHIVE_NAME }}.tar.gz" golta
 
+      - name: Package artifacts (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir dist
+          copy target\${{ matrix.target }}\release\golta.exe dist\
+          powershell -command "Compress-Archive dist\* '${{ env.ARCHIVE_NAME }}.zip'"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARCHIVE_NAME }}
-          path: dist/*.tar.gz
+          path: dist/*
 
   publish:
     needs: build
@@ -71,4 +91,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           generate_release_notes: true
-          files: artifacts/**/*.tar.gz
+          files: artifacts/**/*.{tar.gz,zip}
