@@ -1,8 +1,8 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 
 /// Represents version information fetched from the Go download server.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct GoVersionInfo {
     pub version: String,
     pub stable: bool,
