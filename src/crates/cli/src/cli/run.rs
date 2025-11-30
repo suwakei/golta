@@ -1,34 +1,155 @@
 use std::error::Error;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub fn run(tool: String, args: Vec<String>) {
-    // If an error occurs, print a message and exit.
-    if let Err(e) = run_go(&tool, &args) {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
+    let env = RealGoRunEnvironment;
+    let mut runner = ProcessGoRunner;
+
+    match run_go(&tool, &args, &env, &mut runner) {
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 
-fn run_go(tool: &str, args: &[String]) -> Result<(), Box<dyn Error>> {
-    if !tool.starts_with("go@") {
+fn run_go(
+    tool: &str,
+    args: &[String],
+    env: &impl GoRunEnvironment,
+    runner: &mut impl GoCommandRunner,
+) -> Result<i32, Box<dyn Error>> {
+    let version = tool
+        .strip_prefix("go@")
+        .ok_or("Only Go run is supported currently. Use format 'go@<version>'.")?;
+
+    if version.is_empty() {
         return Err("Only Go run is supported currently. Use format 'go@<version>'.".into());
     }
 
-    let version = tool.trim_start_matches("go@");
+    let go_path = env.go_binary_path(version)?;
+    runner.run(&go_path, args)
+}
 
-    // Use `home::home_dir` to safely get the home directory in a cross-platform way
-    let home = home::home_dir().ok_or("Could not find home directory")?;
+trait GoRunEnvironment {
+    fn go_binary_path(&self, version: &str) -> Result<PathBuf, Box<dyn Error>>;
+}
 
-    let go_executable_name = if cfg!(windows) { "go.exe" } else { "go" };
-    let go_path = home
-        .join(".golta")
-        .join("versions")
-        .join(version)
-        .join("bin")
-        .join(go_executable_name);
+struct RealGoRunEnvironment;
 
-    let status = Command::new(go_path).args(args).status()?; // Handle I/O errors with the `?` operator.
+impl GoRunEnvironment for RealGoRunEnvironment {
+    fn go_binary_path(&self, version: &str) -> Result<PathBuf, Box<dyn Error>> {
+        let go_executable_name = if cfg!(windows) { "go.exe" } else { "go" };
+        let home = home::home_dir().ok_or("Could not find home directory")?;
+        Ok(home
+            .join(".golta")
+            .join("versions")
+            .join(version)
+            .join("bin")
+            .join(go_executable_name))
+    }
+}
 
-    // Use the exit code of the child process as our own.
-    std::process::exit(status.code().unwrap_or(1));
+trait GoCommandRunner {
+    fn run(&mut self, go_path: &Path, args: &[String]) -> Result<i32, Box<dyn Error>>;
+}
+
+struct ProcessGoRunner;
+
+impl GoCommandRunner for ProcessGoRunner {
+    fn run(&mut self, go_path: &Path, args: &[String]) -> Result<i32, Box<dyn Error>> {
+        let status = Command::new(go_path).args(args).status()?;
+        Ok(status.code().unwrap_or(1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    struct MockEnv {
+        go_path: PathBuf,
+        requested_version: RefCell<Option<String>>,
+    }
+
+    impl MockEnv {
+        fn new(go_path: &str) -> Self {
+            Self {
+                go_path: PathBuf::from(go_path),
+                requested_version: RefCell::new(None),
+            }
+        }
+    }
+
+    impl GoRunEnvironment for MockEnv {
+        fn go_binary_path(&self, version: &str) -> Result<PathBuf, Box<dyn Error>> {
+            self.requested_version.replace(Some(version.to_string()));
+            Ok(self.go_path.clone())
+        }
+    }
+
+    struct MockRunner {
+        last_path: Option<PathBuf>,
+        last_args: Vec<String>,
+        exit_code: i32,
+    }
+
+    impl MockRunner {
+        fn new(exit_code: i32) -> Self {
+            Self {
+                last_path: None,
+                last_args: Vec::new(),
+                exit_code,
+            }
+        }
+    }
+
+    impl GoCommandRunner for MockRunner {
+        fn run(&mut self, go_path: &Path, args: &[String]) -> Result<i32, Box<dyn Error>> {
+            self.last_path = Some(go_path.to_path_buf());
+            self.last_args = args.to_vec();
+            Ok(self.exit_code)
+        }
+    }
+
+    #[test]
+    fn errors_when_tool_is_not_go_with_version() {
+        let env = MockEnv::new("/tmp/go");
+        let mut runner = MockRunner::new(0);
+
+        let result = run_go("python@3.12", &[], &env, &mut runner);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn errors_when_version_missing() {
+        let env = MockEnv::new("/tmp/go");
+        let mut runner = MockRunner::new(0);
+
+        let result = run_go("go@", &[], &env, &mut runner);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn passes_version_and_args_to_runner() {
+        let env = MockEnv::new("/tmp/go/bin/go");
+        let mut runner = MockRunner::new(42);
+        let args = vec!["test".into(), "./...".into()];
+
+        let code = run_go("go@1.22.1", &args, &env, &mut runner).unwrap();
+
+        assert_eq!(code, 42);
+        assert_eq!(
+            env.requested_version.borrow().as_deref(),
+            Some("1.22.1"),
+            "version should be forwarded without go@ prefix"
+        );
+        assert_eq!(runner.last_path.unwrap(), PathBuf::from("/tmp/go/bin/go"));
+        assert_eq!(runner.last_args, args);
+    }
 }
