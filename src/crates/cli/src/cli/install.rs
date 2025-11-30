@@ -4,10 +4,12 @@ use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::error::Error;
 use std::fs;
+#[cfg(windows)]
 use std::fs::File;
 use std::future::Future;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use zip::ZipArchive;
 
 pub async fn run(tool: String) {
@@ -200,7 +202,7 @@ fn extract_tar_gz(
         fs::create_dir_all(&temp_extract_dir)?;
     }
 
-    archive.set_unpack_permissions(false);
+    archive.set_preserve_permissions(false);
     archive.set_preserve_mtime(false);
 
     for entry in archive.entries()? {

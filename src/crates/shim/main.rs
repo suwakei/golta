@@ -1,7 +1,7 @@
 use std::env;
 use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{exit, Command};
 
 fn main() {
@@ -32,9 +32,9 @@ fn run() -> Result<(), Box<dyn Error>> {
 }
 
 /// Finds the active Go version by searching for `.golta.json` and then checking the global default.
-fn find_go_version(start_dir: &PathBuf, home_dir: &PathBuf) -> Result<String, Box<dyn Error>> {
+fn find_go_version(start_dir: &Path, home_dir: &Path) -> Result<String, Box<dyn Error>> {
     // 1a. Look for a version pinned in the project, traversing up from start_dir.
-    let mut current_dir = start_dir.clone();
+    let mut current_dir = start_dir.to_path_buf();
     loop {
         let pin_file_path = current_dir.join(".golta.json");
         if pin_file_path.exists() {
@@ -63,7 +63,7 @@ fn find_go_version(start_dir: &PathBuf, home_dir: &PathBuf) -> Result<String, Bo
 }
 
 /// Constructs the path to the Go executable and runs it.
-fn execute_go(version: &str, home_dir: &PathBuf, args: Vec<String>) -> Result<i32, Box<dyn Error>> {
+fn execute_go(version: &str, home_dir: &Path, args: Vec<String>) -> Result<i32, Box<dyn Error>> {
     let go_executable_name = if cfg!(windows) { "go.exe" } else { "go" };
     let real_go_path: PathBuf = home_dir
         .join(".golta")
@@ -89,10 +89,7 @@ mod tests {
         let project_dir = tempdir().unwrap();
         let home_dir = tempdir().unwrap();
 
-        let result = find_go_version(
-            &project_dir.path().to_path_buf(),
-            &home_dir.path().to_path_buf(),
-        );
+        let result = find_go_version(project_dir.path(), home_dir.path());
 
         assert!(result.is_err());
         assert_eq!(
@@ -108,10 +105,7 @@ mod tests {
         let pin_file = project_dir.path().join(".golta.json");
         fs::write(pin_file, r#"{"go": "1.21.0"}"#).unwrap();
 
-        let result = find_go_version(
-            &project_dir.path().to_path_buf(),
-            &home_dir.path().to_path_buf(),
-        );
+        let result = find_go_version(project_dir.path(), home_dir.path());
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "1.21.0");
@@ -126,7 +120,7 @@ mod tests {
         let pin_file = project_dir.path().join(".golta.json");
         fs::write(pin_file, r#"{"go": "1.22.0"}"#).unwrap();
 
-        let result = find_go_version(&sub_dir, &home_dir.path().to_path_buf());
+        let result = find_go_version(&sub_dir, home_dir.path());
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "1.22.0");
@@ -140,10 +134,7 @@ mod tests {
         fs::create_dir_all(&state_dir).unwrap();
         fs::write(state_dir.join("default.txt"), "1.20.5").unwrap();
 
-        let result = find_go_version(
-            &project_dir.path().to_path_buf(),
-            &home_dir.path().to_path_buf(),
-        );
+        let result = find_go_version(project_dir.path(), home_dir.path());
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "1.20.5");
@@ -160,10 +151,7 @@ mod tests {
         fs::create_dir_all(&state_dir).unwrap();
         fs::write(state_dir.join("default.txt"), "1.20.5").unwrap();
 
-        let result = find_go_version(
-            &project_dir.path().to_path_buf(),
-            &home_dir.path().to_path_buf(),
-        );
+        let result = find_go_version(project_dir.path(), home_dir.path());
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "1.21.0");

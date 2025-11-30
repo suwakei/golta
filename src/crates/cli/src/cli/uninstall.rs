@@ -77,7 +77,7 @@ fn clear_default_if_matches<W: Write>(
     Ok(())
 }
 
-fn warn_if_pinned<W: Write, F>(
+fn warn_if_pinned<W, F>(
     version: &str,
     find_pinned: F,
     writer: &mut W,
