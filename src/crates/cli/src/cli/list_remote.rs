@@ -1,17 +1,29 @@
 use crate::shared::versions::{fetch_remote_versions, GoVersionInfo};
 use std::error::Error;
+use std::fs;
 use std::future::Future;
 use std::io::Write;
+use std::path::PathBuf;
 
 pub async fn run() {
     let mut out = std::io::stdout();
-    if let Err(e) = list_remote_go_versions(fetch_remote_versions, &mut out).await {
+    let home = match home::home_dir() {
+        Some(path) => path,
+        None => {
+            eprintln!("Error: Could not find home directory");
+            return;
+        }
+    };
+
+    let cache = FsRemoteVersionsCache::new(home);
+    if let Err(e) = list_remote_go_versions(fetch_remote_versions, &cache, &mut out).await {
         eprintln!("Error: {}", e);
     }
 }
 
 async fn list_remote_go_versions<W, Fetch, Fut>(
     fetch_versions: Fetch,
+    cache: &impl RemoteVersionsCache,
     out: &mut W,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -19,12 +31,44 @@ where
     Fetch: Fn() -> Fut,
     Fut: Future<Output = Result<Vec<GoVersionInfo>, Box<dyn Error>>>,
 {
-    writeln!(out, "Fetching available Go versions from go.dev...")?;
+    let cached_versions = cache.read_cache().unwrap_or(None);
+    let fetched = fetch_versions().await;
 
-    let versions: Vec<GoVersionInfo> = fetch_versions().await?;
-    render_versions(&versions, out)?;
+    match fetched {
+        Ok(remote_versions) => {
+            let use_cache = cached_versions
+                .as_ref()
+                .and_then(|cached| cached.first())
+                .zip(remote_versions.first())
+                .map(|(cached_latest, remote_latest)| cached_latest == remote_latest)
+                .unwrap_or(false);
 
-    Ok(())
+            if use_cache {
+                writeln!(out, "Latest Go versions unchanged; showing cached results.")?;
+                render_versions(cached_versions.as_ref().unwrap(), out)?;
+                return Ok(());
+            }
+
+            writeln!(out, "Fetching available Go versions from go.dev...")?;
+            render_versions(&remote_versions, out)?;
+            if let Err(e) = cache.write_cache(&remote_versions) {
+                writeln!(out, "Warning: failed to update cache ({})", e).ok();
+            }
+            Ok(())
+        }
+        Err(fetch_error) => {
+            if let Some(cached) = cached_versions {
+                writeln!(
+                    out,
+                    "Failed to fetch latest versions ({}). Showing cached results.",
+                    fetch_error
+                )?;
+                render_versions(&cached, out)
+            } else {
+                Err(fetch_error)
+            }
+        }
+    }
 }
 
 fn render_versions(versions: &[GoVersionInfo], out: &mut impl Write) -> Result<(), Box<dyn Error>> {
@@ -47,9 +91,50 @@ fn render_versions(versions: &[GoVersionInfo], out: &mut impl Write) -> Result<(
     Ok(())
 }
 
+trait RemoteVersionsCache {
+    fn read_cache(&self) -> Result<Option<Vec<GoVersionInfo>>, Box<dyn Error>>;
+    fn write_cache(&self, versions: &[GoVersionInfo]) -> Result<(), Box<dyn Error>>;
+}
+
+struct FsRemoteVersionsCache {
+    path: PathBuf,
+}
+
+impl FsRemoteVersionsCache {
+    fn new(home: PathBuf) -> Self {
+        let path = home
+            .join(".golta")
+            .join("cache")
+            .join("remote_versions.json");
+        Self { path }
+    }
+}
+
+impl RemoteVersionsCache for FsRemoteVersionsCache {
+    fn read_cache(&self) -> Result<Option<Vec<GoVersionInfo>>, Box<dyn Error>> {
+        if !self.path.exists() {
+            return Ok(None);
+        }
+
+        let content = fs::read_to_string(&self.path)?;
+        let versions: Vec<GoVersionInfo> = serde_json::from_str(&content)?;
+        Ok(Some(versions))
+    }
+
+    fn write_cache(&self, versions: &[GoVersionInfo]) -> Result<(), Box<dyn Error>> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(versions)?;
+        fs::write(&self.path, content)?;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
 
     #[test]
     fn renders_stable_and_unstable_versions() {
@@ -81,11 +166,12 @@ mod tests {
             stable: true,
         }];
         let mut out = Vec::new();
+        let cache = MockCache::default();
 
         let fake_fetcher = || async { Ok(versions.clone()) };
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            list_remote_go_versions(fake_fetcher, &mut out)
+            list_remote_go_versions(fake_fetcher, &cache, &mut out)
                 .await
                 .unwrap();
         });
@@ -93,5 +179,113 @@ mod tests {
         let output = String::from_utf8(out).unwrap();
         assert!(output.contains("Fetching available Go versions from go.dev..."));
         assert!(output.contains("  1.20.0"));
+    }
+
+    #[test]
+    fn uses_cache_when_remote_latest_matches() {
+        let cached = vec![GoVersionInfo {
+            version: "go1.20.0".into(),
+            stable: true,
+        }];
+        let cache = MockCache::with_data(cached.clone());
+        let fetcher = || async {
+            Ok(vec![GoVersionInfo {
+                version: "go1.20.0".into(),
+                stable: true,
+            }])
+        };
+        let mut out = Vec::new();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            list_remote_go_versions(fetcher, &cache, &mut out)
+                .await
+                .unwrap();
+        });
+
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains("cached results"));
+        assert!(!output.contains("Fetching available Go versions from go.dev"));
+        assert!(output.contains("  1.20.0"));
+        assert_eq!(cache.write_calls(), 0, "should not rewrite cache");
+    }
+
+    #[test]
+    fn falls_back_to_cache_on_fetch_error() {
+        let cached = vec![GoVersionInfo {
+            version: "go1.19.0".into(),
+            stable: true,
+        }];
+        let cache = MockCache::with_data(cached.clone());
+        let failing_fetcher = || async { Err::<Vec<GoVersionInfo>, _>("network error".into()) };
+        let mut out = Vec::new();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            list_remote_go_versions(failing_fetcher, &cache, &mut out)
+                .await
+                .unwrap();
+        });
+
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains("Showing cached results."));
+        assert!(output.contains("  1.19.0"));
+    }
+
+    #[test]
+    fn writes_cache_when_remote_has_new_version() {
+        let cached = vec![GoVersionInfo {
+            version: "go1.20.0".into(),
+            stable: true,
+        }];
+        let cache = MockCache::with_data(cached);
+        let remote = vec![GoVersionInfo {
+            version: "go1.21.0".into(),
+            stable: true,
+        }];
+        let fetcher = || async { Ok(remote.clone()) };
+        let mut out = Vec::new();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            list_remote_go_versions(fetcher, &cache, &mut out)
+                .await
+                .unwrap();
+        });
+
+        assert_eq!(cache.write_calls(), 1, "cache should be updated");
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains("  1.21.0"));
+    }
+
+    #[derive(Default)]
+    struct MockCache {
+        stored: RefCell<Option<Vec<GoVersionInfo>>>,
+        writes: RefCell<usize>,
+    }
+
+    impl MockCache {
+        fn with_data(data: Vec<GoVersionInfo>) -> Self {
+            Self {
+                stored: RefCell::new(Some(data)),
+                writes: RefCell::new(0),
+            }
+        }
+
+        fn write_calls(&self) -> usize {
+            *self.writes.borrow()
+        }
+    }
+
+    impl RemoteVersionsCache for MockCache {
+        fn read_cache(&self) -> Result<Option<Vec<GoVersionInfo>>, Box<dyn Error>> {
+            Ok(self.stored.borrow().clone())
+        }
+
+        fn write_cache(&self, versions: &[GoVersionInfo]) -> Result<(), Box<dyn Error>> {
+            *self.writes.borrow_mut() += 1;
+            *self.stored.borrow_mut() = Some(versions.to_vec());
+            Ok(())
+        }
     }
 }
