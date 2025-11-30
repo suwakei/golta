@@ -36,7 +36,7 @@ fn list_go(ctx: &impl ListContext, out: &mut dyn Write) -> Result<(), Box<dyn Er
         })
         .collect();
 
-    sortable_versions.sort_by(|(v1, _), (v2, _)| v1.cmp(v2));
+    sortable_versions.sort_by(|(v1, _), (v2, _)| v2.cmp(v1));
 
     if sortable_versions.is_empty() {
         writeln!(out, "  No Go versions installed")?;
