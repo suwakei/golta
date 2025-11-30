@@ -1,5 +1,4 @@
 ﻿use serde_json::Value;
-use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -62,6 +61,7 @@ fn extract_go_version(raw_json: &str) -> Result<Option<String>, Box<dyn Error>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     struct MockFs {
         files: HashMap<PathBuf, String>,
