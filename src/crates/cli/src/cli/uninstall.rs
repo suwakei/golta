@@ -115,13 +115,7 @@ mod tests {
         fs::write(&default_file, version).unwrap();
 
         let mut buffer = Vec::new();
-        uninstall_go(
-            &format!("go@{}", version),
-            &home,
-            || Ok(None),
-            &mut buffer,
-        )
-        .unwrap();
+        uninstall_go(&format!("go@{}", version), &home, || Ok(None), &mut buffer).unwrap();
 
         assert!(!version_dir.exists());
         assert!(!default_file.exists());
