@@ -19,18 +19,27 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    #[command(about = "Download and install a tool version (e.g., go@1.23.0)", aliases = &["i", "fetch"])]
+    #[command(
+        about = "Download and install a tool version (e.g., go@1.23.0) (aliases: i or fetch)",
+        aliases = &["i", "fetch"]
+    )]
     Install {
         /// The tool and version to install (e.g., "go@1.23.0")
         #[arg(default_value = "go")]
         tool: String,
     },
-    #[command(about = "Uninstall a specific version of a tool", alias = "un")]
+    #[command(
+        about = "Uninstall a specific version of a tool (aliases: un or uni)",
+        aliases = &["un", "uni"]
+    )]
     Uninstall {
         /// The tool and version to uninstall (e.g., "go@1.23.0")
         tool: String,
     },
-    #[command(about = "Manage the global default version for a tool")]
+    #[command(
+        about = "Manage the global default version for a tool (alias: df)",
+        alias = "df"
+    )]
     Default(DefaultCommand),
     #[command(
         about = "Run a command with a one-time tool version, ignoring the current configuration"
@@ -65,9 +74,12 @@ pub enum Commands {
         /// The tool to find (e.g., "go")
         tool: String,
     },
-    #[command(about = "List all installed versions", alias = "ls")]
+    #[command(about = "List all installed versions (alias: ls)", alias = "ls")]
     List,
-    #[command(about = "List available versions from go.dev", alias = "ls-remote")]
+    #[command(
+        about = "List available versions from go.dev (alias: ls-remote)",
+        alias = "ls-remote"
+    )]
     ListRemote,
     #[command(about = "Generate shell completion scripts")]
     Completions {
