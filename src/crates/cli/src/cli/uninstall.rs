@@ -77,11 +77,7 @@ fn clear_default_if_matches<W: Write>(
     Ok(())
 }
 
-fn warn_if_pinned<W, F>(
-    version: &str,
-    find_pinned: F,
-    writer: &mut W,
-) -> Result<(), Box<dyn Error>>
+fn warn_if_pinned<W, F>(version: &str, find_pinned: F, writer: &mut W) -> Result<(), Box<dyn Error>>
 where
     W: Write,
     F: Fn() -> Result<Option<(String, PathBuf)>, Box<dyn Error>>,
