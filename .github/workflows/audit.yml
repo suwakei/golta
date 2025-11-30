@@ -1,0 +1,33 @@
+name: Audit
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Every Monday 03:00 JST
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy # optional: use linting also
+
+      - name: Cache Cargo Binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-audit
+        run: |
+          if ! command -v cargo-audit &> /dev/null; then
+            cargo install cargo-audit
+          fi
+
+      - name: Run audit
+        run: cargo audit --ignore RUSTSEC-2025-0119
