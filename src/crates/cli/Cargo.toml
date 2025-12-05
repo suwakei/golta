@@ -20,7 +20,7 @@ semver = "1.0"
 tempfile = "3.23.0"
 indicatif = { version = "0.17", features = ["tokio"] }
 futures-util = "0.3"
-flate2 = "1.0"
+flate2 = "1.1"
 tar = "0.4"
 regex = "1.0"
 
