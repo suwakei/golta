@@ -162,7 +162,7 @@ fn execute_go(version: &str, home_dir: &Path, args: Vec<OsString>) -> Result<i32
     #[cfg(unix)]
     {
         let err = command.exec();
-        Err(err.into());
+        Err(err.into())
     }
 
     #[cfg(not(unix))]
