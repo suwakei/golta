@@ -1,7 +1,7 @@
 mod cli;
 mod shared;
 
-use clap::{command, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 use cli::{
     completions, default, exec, install, list, list_remote, pin, run, setup, uninstall, unpin,

@@ -135,7 +135,7 @@ fn execute_go(version: &str, home_dir: &Path, args: Vec<OsString>) -> Result<i32
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             let input = input.trim().to_lowercase();
-            input == "" || input == "y" || input == "yes"
+            input.is_empty() || input == "y" || input == "yes"
         };
 
         if should_install {
@@ -162,7 +162,7 @@ fn execute_go(version: &str, home_dir: &Path, args: Vec<OsString>) -> Result<i32
     #[cfg(unix)]
     {
         let err = command.exec();
-        return Err(err.into());
+        Err(err.into());
     }
 
     #[cfg(not(unix))]
