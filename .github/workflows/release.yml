@@ -26,7 +26,8 @@ jobs:
       - name: Install dist
         # we specify bash to get pipefail; it guards against the `curl` command
         # failing. otherwise `sh` won't catch that `curl` returned non-0
-        shell: bash        run: |
+        shell: bash
+        run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.30.3/cargo-dist-installer.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Cache dist
