@@ -140,7 +140,10 @@ fn execute_go(version: &str, home_dir: &Path, args: Vec<OsString>) -> Result<i32
         };
 
         if should_install {
-            let status = Command::new("golta").arg("install").arg(version).status()?;
+            let status = Command::new("golta")
+                .arg("install")
+                .arg(format!("go@{}", version_number))
+                .status()?;
 
             if !status.success() {
                 return Err(format!("Failed to install Go version {}.", version).into());
