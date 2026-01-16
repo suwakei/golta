@@ -17,7 +17,7 @@ pub async fn run(tool: String) {
         Some(path) => path,
         None => {
             eprintln!("Error: Could not find home directory");
-            return;
+            std::process::exit(1);
         }
     };
 
@@ -32,6 +32,7 @@ pub async fn run(tool: String) {
     .await
     {
         eprintln!("Error: {}", e);
+        std::process::exit(1);
     }
 }
 
@@ -95,7 +96,7 @@ fn parse_version_spec(tool: &str) -> Result<&str, Box<dyn Error>> {
     } else if tool == "go" {
         Ok("latest")
     } else {
-        Err("Invalid format. Use `golta install go` or `golta install go@<version>`.".into())
+        Err("Invalid format. Use `golta install go`, `golta install go@latest`, or `golta install go@<version>`.".into())
     }
 }
 
@@ -276,6 +277,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_version_spec_handles_latest() {
+        assert_eq!(parse_version_spec("go").unwrap(), "latest");
+        assert_eq!(parse_version_spec("go@latest").unwrap(), "latest");
+        assert_eq!(parse_version_spec("go@1.22.3").unwrap(), "1.22.3");
+    }
+
+    #[test]
     fn builds_download_url_with_os_and_format() {
         let url = build_download_url("1.22.3", "linux-amd64", "tar.gz");
         assert_eq!(url, "https://golang.org/dl/go1.22.3.linux-amd64.tar.gz");
@@ -321,5 +329,60 @@ mod tests {
         let mut buffer = Vec::new();
         let err = resolve_go_version_from_list("1.99.0", &versions, &mut buffer).unwrap_err();
         assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn skips_install_if_already_exists() {
+        let home = temp_home();
+        let version = "1.21.0";
+        let install_dir = home.join(".golta").join("versions").join(version);
+        fs::create_dir_all(&install_dir).unwrap();
+
+        let mut buffer = Vec::new();
+
+        let fetcher = || async {
+            Ok(vec![GoVersionInfo {
+                version: format!("go{}", version),
+                stable: true,
+            }])
+        };
+
+        let downloader = |_| async {
+            panic!("Downloader should not be called");
+            #[allow(unreachable_code)]
+            Ok(vec![])
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            install_go(
+                &format!("go@{}", version),
+                &home,
+                fetcher,
+                downloader,
+                &mut buffer,
+            )
+            .await
+            .unwrap();
+        });
+
+        let output = String::from_utf8(buffer).unwrap();
+        assert!(output.contains(&format!("Go {} is already installed.", version)));
+
+        fs::remove_dir_all(home).unwrap();
+    }
+
+    fn temp_home() -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let unique = format!(
+            "golta_install_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        path.push(unique);
+        path
     }
 }
