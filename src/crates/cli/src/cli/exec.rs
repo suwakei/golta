@@ -59,6 +59,7 @@ impl GoEnvironment for RealGoEnvironment {
             .join(".golta")
             .join("versions")
             .join(version.trim_start_matches("go@"))
+            .join("go")
             .join("bin")
             .join(go_executable_name))
     }

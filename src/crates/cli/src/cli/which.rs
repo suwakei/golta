@@ -31,6 +31,7 @@ fn resolve_go_path(home: &Path, version: &str) -> PathBuf {
     home.join(".golta")
         .join("versions")
         .join(version.trim_start_matches("go@"))
+        .join("go")
         .join("bin")
         .join(go_executable_name)
 }
@@ -48,6 +49,7 @@ mod tests {
             .join(".golta")
             .join("versions")
             .join("1.22.3")
+            .join("go")
             .join("bin")
             .join(if cfg!(windows) { "go.exe" } else { "go" });
 
@@ -63,6 +65,7 @@ mod tests {
             .join(".golta")
             .join("versions")
             .join("1.22.3")
+            .join("go")
             .join("bin")
             .join(if cfg!(windows) { "go.exe" } else { "go" });
 

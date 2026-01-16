@@ -251,7 +251,7 @@ fn extract_zip(bytes: &[u8], dest: &Path, pb: &ProgressBar) -> std::io::Result<(
         let name = file.name().to_string();
 
         // Extract into the `go/` directory
-        let outpath = dest.join("go").join(file.name());
+        let outpath = dest.join(file.name());
         if file.name().is_empty() {
             continue;
         };

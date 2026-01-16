@@ -1,4 +1,5 @@
 use crate::shared::pinned_version::find_pinned_go_version;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
@@ -43,7 +44,13 @@ where
     clear_default_if_matches(version, &default_file, writer)?;
     warn_if_pinned(version, find_pinned, writer)?;
 
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} {msg}")?);
+    pb.set_message(format!("Uninstalling Go {}...", version));
+    pb.enable_steady_tick(std::time::Duration::from_millis(100));
+
     fs::remove_dir_all(&version_dir)?;
+    pb.finish_and_clear();
     writeln!(writer, "Go {} has been uninstalled.", version)?;
 
     Ok(())

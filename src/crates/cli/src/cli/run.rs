@@ -30,11 +30,19 @@ fn run_go(
     }
 
     let go_path = env.go_binary_path(version)?;
+    if !env.binary_exists(&go_path) {
+        return Err(format!(
+            "Go version {} is not installed. Please install it first with `golta install go@{}`.",
+            version, version
+        )
+        .into());
+    }
     runner.run(&go_path, args)
 }
 
 trait GoRunEnvironment {
     fn go_binary_path(&self, version: &str) -> Result<PathBuf, Box<dyn Error>>;
+    fn binary_exists(&self, path: &Path) -> bool;
 }
 
 struct RealGoRunEnvironment;
@@ -47,8 +55,13 @@ impl GoRunEnvironment for RealGoRunEnvironment {
             .join(".golta")
             .join("versions")
             .join(version)
+            .join("go")
             .join("bin")
             .join(go_executable_name))
+    }
+
+    fn binary_exists(&self, path: &Path) -> bool {
+        path.exists()
     }
 }
 
@@ -88,6 +101,10 @@ mod tests {
         fn go_binary_path(&self, version: &str) -> Result<PathBuf, Box<dyn Error>> {
             self.requested_version.replace(Some(version.to_string()));
             Ok(self.go_path.clone())
+        }
+
+        fn binary_exists(&self, _path: &Path) -> bool {
+            true
         }
     }
 

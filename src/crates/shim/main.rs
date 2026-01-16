@@ -107,6 +107,7 @@ fn execute_go(version: &str, home_dir: &Path, args: Vec<OsString>) -> Result<i32
         .join(".golta")
         .join("versions")
         .join(version_number)
+        .join("go")
         .join("bin")
         .join(go_executable_name);
 
