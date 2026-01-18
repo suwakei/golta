@@ -23,13 +23,16 @@
   	</thead>
 </table>
 
-Golta is a hassle-free way to manage your Go toolchains. It provides a fast, cross-platform solution for installing and switching between Go versions, inspired by the seamless experience of [Volta](https://volta.sh/).
+Golta
+A fast, seamless Go version manager powered by Rust. 🦀
+
+Inspired by Volta, Golta allows you to switch Go versions automatically based on your project directory.
 
 ## ✨ Features
 
 - **Fast**: Built with Rust for optimal performance.
 - **Cross-Platform**: Works on Windows, macOS, and Linux.
-- **Seamless Switching**: Automatically switches Go versions based on your project's `go.mod` file.
+- **Seamless Switching**: Automatically switches Go versions based on .golta.json or your project's go.mod file.
 - **Simple Installation**: Get started with a single command.
 - **No Dependencies**: Distributed as a single binary.
 
@@ -41,75 +44,37 @@ Golta is a hassle-free way to manage your Go toolchains. It provides a fast, cro
 
 You can install Golta using the installer script:
 
-```sh
-curl -fsSL https://golta-website.vercel.app/install | bash
-```
-
-Or via Homebrew:
-
 ```bash
-# TODO: Add to Homebrew
-brew install suwakei/tap/golta
+curl -fsSL https://golta-website.vercel.app/install | bash
 ```
 
 #### Windows
 
-```sh
+```powershell
 iwr -useb https://golta-website.vercel.app/install_win | iex
 ```
 
-### Shell Setup
-
-To complete the installation, you need to add Golta's home directory to your shell's `PATH`.
-
-**Bash/Zsh:**
-
-Add the following to your `~/.bashrc` or `~/.zshrc`:
-
-```sh
-export GOLTA_HOME="$HOME/.golta"
-export PATH="$GOLTA_HOME/bin:$PATH"
-```
-
-**PowerShell:**
-
-Add the following to your PowerShell profile (`$PROFILE`):
-
-```powershell
-$env:GOLTA_HOME = "$HOME\.golta"
-$env:PATH = "$env:GOLTA_HOME\bin;$env:PATH"
-```
+[!TIP] After installation, restart your terminal to start using golta.
 
 ## 📖 Usage
 
-Here are some common commands to get you started:
+### Installing Go
 
-- **Install a specific Go version:**
+```shell
+golta install go
+```
 
-  ```sh
-  golta install 1.21.5
-  ```
+or
 
-- **Set the default Go version:**
+```shell
+golta install go@latest
+```
 
-  ```sh
-  golta default 1.21.5
-  ```
+```shell
+go run main.go
+```
 
-- **Pin a Go version to a project:**
-  Golta automatically detects the version specified in your project's `go.mod` file.
-
-  ```go
-  // go.mod
-  go 1.21
-  ```
-
-  When you run `go` commands inside this project, Golta will automatically use the matching Go version.
-
-- **List installed Go versions:**
-  ```sh
-  golta list
-  ```
+For more detailed guides, troubleshooting,visit our documentation: [golta.dev](https://golta-website.vercel.app/)
 
 ## ❤️ Contributing
 

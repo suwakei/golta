@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>高速でクロスプラットフォームなGoバージョンマネージャー。Voltaスタイルのシームレスな切り替えが可能。</b>
+  <b>Voltaスタイルのシームレスな切り替え機能を備えた、高速でクロスプラットフォームなGoバージョンマネージャー。</b>
 </p>
 
 <p align="center">
@@ -16,22 +16,25 @@
 
 <table>
 	<thead>
-		<tr>
-			<th style="text-align:center"><a href="README.md">English</a></th>
-			<th style="text-align:center">日本語</th>
-		</tr>
-	</thead>
+    	<tr>
+      		<th style="text-align:center"><a href="README.md">English</a></th>
+      		<th style="text-align:center">日本語</th>
+    	</tr>
+  	</thead>
 </table>
 
-Goltaは、Goツールチェーンを管理するための手間のかからない方法です。[Volta](https://volta.sh/)のシームレスな体験にインスパイアされた、Goバージョンのインストールと切り替えのための高速でクロスプラットフォームなソリューションを提供します。
+Golta
+Rust製の高速でシームレスなGoバージョンマネージャー。🦀
+
+VoltaにインスパイアされたGoltaは、プロジェクトディレクトリに基づいてGoのバージョンを自動的に切り替えることができます。
 
 ## ✨ 特徴
 
-- **高速**: Rustで構築されており、最適なパフォーマンスを実現します。
+- **高速**: Rustで構築されており、最適なパフォーマンスを発揮します。
 - **クロスプラットフォーム**: Windows、macOS、Linuxで動作します。
-- **シームレスな切り替え**: プロジェクトの `go.mod` ファイルに基づいて、Goのバージョンを自動的に切り替えます。
-- **簡単なインストール**: コマンド一つで使い始めることができます。
-- **依存関係なし**: シングルバイナリとして配布されます。
+- **シームレスな切り替え**: .golta.json またはプロジェクトの go.mod ファイルに基づいて、Goのバージョンを自動的に切り替えます。
+- **簡単なインストール**: コマンド1つで使い始めることができます。
+- **依存関係なし**: 単一のバイナリとして配布されます。
 
 ## 🚀 はじめに
 
@@ -45,76 +48,38 @@ Goltaは、Goツールチェーンを管理するための手間のかからな�
 curl -fsSL https://golta-website.vercel.app/install | bash
 ```
 
-またはHomebrew経由で：
-
-```sh
-# TODO: Homebrewに追加
-brew install suwakei/tap/golta
-```
-
 #### Windows
 
-```sh
+```powershell
 iwr -useb https://golta-website.vercel.app/install_win | iex
 ```
 
-### シェルの設定
-
-インストールを完了するには、Goltaのホームディレクトリをシェルの `PATH` に追加する必要があります。
-
-**Bash/Zsh:**
-
-`~/.bashrc` または `~/.zshrc` に以下を追加してください：
-
-```sh
-export GOLTA_HOME="$HOME/.golta"
-export PATH="$GOLTA_HOME/bin:$PATH"
-```
-
-**PowerShell:**
-
-PowerShellプロファイル (`$PROFILE`) に以下を追加してください：
-
-```powershell
-$env:GOLTA_HOME = "$HOME\.golta"
-$env:PATH = "$env:GOLTA_HOME\bin;$env:PATH"
-```
+[!TIP] インストール後、goltaを使用開始するにはターミナルを再起動してください。
 
 ## 📖 使い方
 
-使い始めるための一般的なコマンドをいくつか紹介します：
+### Goのインストール
 
-- **特定のGoバージョンをインストールする:**
+```shell
+golta install go
+```
 
-  ```sh
-  golta install 1.21.5
-  ```
+or
 
-- **デフォルトのGoバージョンを設定する:**
+```shell
+golta install go@latest
+```
 
-  ```sh
-  golta default 1.21.5
-  ```
+```shell
+go run main.go
+```
 
-- **プロジェクトにGoバージョンを固定（ピン留め）する:**
-  Goltaは、プロジェクトの `go.mod` ファイルで指定されたバージョンを自動的に検出します。
+より詳細なガイドやトラブルシューティングについては、ドキュメントをご覧ください: golta.dev
 
-  ```go
-  // go.mod
-  go 1.21
-  ```
+## ❤️ 貢献について
 
-  このプロジェクト内で `go` コマンドを実行すると、Goltaは自動的に一致するGoバージョンを使用します。
-
-- **インストールされているGoバージョンを一覧表示する:**
-  ```sh
-  golta list
-  ```
-
-## ❤️ 貢献
-
-貢献は大歓迎です！プルリクエストを送信するか、Issueを作成してください。
+貢献は大歓迎です！お気軽にプルリクエストを送信したり、Issueを作成してください。
 
 ## 📜 ライセンス
 
-このプロジェクトはMITライセンスの下でライセンスされています。
+このプロジェクトは MIT ライセンスの下でライセンスされています。
