@@ -41,8 +41,8 @@ Goltaは、Goツールチェーンを管理するための手間のかからな�
 
 インストーラースクリプトを使用してGoltaをインストールできます：
 
-```sh
-curl https://raw.githubusercontent.com/suwakei/golta/main/install.sh | sh
+```bash
+curl -fsSL https://golta-website.vercel.app/install | bash
 ```
 
 またはHomebrew経由で：
@@ -54,15 +54,9 @@ brew install suwakei/tap/golta
 
 #### Windows
 
-Scoopを使用してGoltaをインストールできます：
-
 ```sh
-# TODO: Scoopバケットに追加
-scoop bucket add suwakei https://github.com/suwakei/scoop-bucket.git
-scoop install suwakei/golta
+iwr -useb https://golta-website.vercel.app/install_win | iex
 ```
-
-または、Releasesページから最新のリリースをダウンロードしてください。
 
 ### シェルの設定
 

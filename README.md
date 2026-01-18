@@ -42,27 +42,21 @@ Golta is a hassle-free way to manage your Go toolchains. It provides a fast, cro
 You can install Golta using the installer script:
 
 ```sh
-curl https://raw.githubusercontent.com/suwakei/golta/main/install.sh | sh
+curl -fsSL https://golta-website.vercel.app/install | bash
 ```
 
 Or via Homebrew:
 
-```sh
+```bash
 # TODO: Add to Homebrew
 brew install suwakei/tap/golta
 ```
 
 #### Windows
 
-You can install Golta using Scoop:
-
 ```sh
-# TODO: Add to a Scoop bucket
-scoop bucket add suwakei https://github.com/suwakei/scoop-bucket.git
-scoop install suwakei/golta
+iwr -useb https://golta-website.vercel.app/install_win | iex
 ```
-
-Or download the latest release from the Releases page.
 
 ### Shell Setup
 
