@@ -48,8 +48,13 @@ if ($UserPath -split ';' -notcontains $InstallDir) {
     $NewPath = "$InstallDir;$UserPath"
     [Environment]::SetEnvironmentVariable("Path", $NewPath, "User")
     Write-Host "Added $InstallDir to your User Path."
-    Write-Host "Please restart your terminal/PowerShell to apply the changes."
 }
 else {
     Write-Host "$InstallDir is already in your PATH."
+}
+
+# Update current session PATH immediately
+if ($env:Path -split ';' -notcontains $InstallDir) {
+    $env:Path = "$InstallDir;$env:Path"
+    Write-Host "Added $InstallDir to current session PATH."
 }

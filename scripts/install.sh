@@ -61,6 +61,11 @@ if [ -n "$SHELL_CONFIG" ]; then
         echo "" >> "$SHELL_CONFIG"
         echo "# Added by $BINARY_NAME installer" >> "$SHELL_CONFIG"
         echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$SHELL_CONFIG"
-        echo "Added $INSTALL_DIR to $SHELL_CONFIG. Please restart your shell."
+        echo "Added $INSTALL_DIR to $SHELL_CONFIG."
+        echo "To start using $BINARY_NAME immediately, run:"
+        echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
     fi
 fi
+
+# Try to update current session PATH (works if script is sourced)
+export PATH="$INSTALL_DIR:$PATH"
