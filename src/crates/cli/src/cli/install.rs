@@ -51,7 +51,7 @@ where
     DownloadBytesFut: Future<Output = Result<Vec<u8>, Box<dyn Error>>>,
 {
     let version_spec = parse_version_spec(tool)?;
-    let version = resolve_go_version(version_spec, fetch_versions, writer).await?;
+    let version = resolve_go_version(&version_spec, fetch_versions, writer).await?;
 
     writeln!(writer, "Installing Go version {}", version)?;
 
@@ -90,13 +90,20 @@ where
     Ok(())
 }
 
-fn parse_version_spec(tool: &str) -> Result<&str, Box<dyn Error>> {
-    if tool.starts_with("go@") {
-        Ok(tool.trim_start_matches("go@"))
+fn parse_version_spec(tool: &str) -> Result<String, Box<dyn Error>> {
+    if tool == "go@mod" {
+        read_go_mod_version().ok_or_else(|| "Could not find 'go <version>' in go.mod".into())
+    } else if tool.starts_with("go@") {
+        Ok(tool.trim_start_matches("go@").to_string())
     } else if tool == "go" {
-        Ok("latest")
+        // 'go' だけの場合、go.modがあればそれを使い、なければlatestとする
+        if let Some(v) = read_go_mod_version() {
+            Ok(v)
+        } else {
+            Ok("latest".to_string())
+        }
     } else {
-        Err("Invalid format. Use `golta install go`, `golta install go@latest`, or `golta install go@<version>`.".into())
+        Err("Invalid format. Use `golta install go`, `golta install go@mod`, or `golta install go@<version>`.".into())
     }
 }
 
@@ -272,13 +279,22 @@ fn extract_zip(bytes: &[u8], dest: &Path, pb: &ProgressBar) -> std::io::Result<(
     Ok(())
 }
 
+fn read_go_mod_version() -> Option<String> {
+    let path = std::env::current_dir().ok()?.join("go.mod");
+    let content = fs::read_to_string(path).ok()?;
+    content
+        .lines()
+        .find(|line| line.starts_with("go "))
+        .map(|line| line.trim_start_matches("go ").trim().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parses_version_spec_handles_latest() {
-        assert_eq!(parse_version_spec("go").unwrap(), "latest");
+        assert_eq!(parse_version_spec("go").unwrap(), "latest"); // go.modがない環境でのテスト前提
         assert_eq!(parse_version_spec("go@latest").unwrap(), "latest");
         assert_eq!(parse_version_spec("go@1.22.3").unwrap(), "1.22.3");
     }

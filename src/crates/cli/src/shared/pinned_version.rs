@@ -44,6 +44,14 @@ pub fn find_pinned_go_version_from<F: PinFileSystem>(
             }
         }
 
+        let go_mod_path = current_dir.join("go.mod");
+        if fs.exists(&go_mod_path) {
+            let content = fs.read_to_string(&go_mod_path)?;
+            if let Some(go_ver) = extract_go_mod_version(&content) {
+                return Ok(Some((go_ver, go_mod_path)));
+            }
+        }
+
         if !current_dir.pop() {
             return Ok(None);
         }
@@ -56,6 +64,34 @@ fn extract_go_version(raw_json: &str) -> Result<Option<String>, Box<dyn Error>> 
         .get("go")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string()))
+}
+
+fn extract_go_mod_version(content: &str) -> Option<String> {
+    let mut go_version = None;
+    let mut toolchain_version = None;
+
+    for line in content.lines() {
+        let line = line.split("//").next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        match parts[0] {
+            "go" => go_version = Some(parts[1].to_string()),
+            "toolchain" => {
+                let v = parts[1].strip_prefix("go").unwrap_or(parts[1]);
+                toolchain_version = Some(v.to_string());
+            }
+            _ => {}
+        }
+    }
+
+    toolchain_version.or(go_version)
 }
 
 #[cfg(test)]
@@ -120,6 +156,40 @@ mod tests {
             found,
             Some(("1.21.1".to_string(), parent_pin)),
             "should find pin in ancestor"
+        );
+    }
+
+    #[test]
+    fn finds_go_mod_when_pin_missing() {
+        let start = PathBuf::from("project/sub");
+        let go_mod_path = PathBuf::from("project/go.mod");
+        let fs = MockFs::new(HashMap::from([(
+            go_mod_path.clone(),
+            "module example\n\ngo 1.21.5\n".to_string(),
+        )]));
+
+        let found = find_pinned_go_version_from(&fs, &start).unwrap();
+
+        assert_eq!(
+            found,
+            Some(("1.21.5".to_string(), go_mod_path)),
+            "should find version in go.mod"
+        );
+    }
+
+    #[test]
+    fn finds_toolchain_version_in_go_mod() {
+        let start = PathBuf::from("project");
+        let go_mod_path = PathBuf::from("project/go.mod");
+        let content = "module example\n\ngo 1.21\ntoolchain go1.21.5\n";
+        let fs = MockFs::new(HashMap::from([(go_mod_path.clone(), content.to_string())]));
+
+        let found = find_pinned_go_version_from(&fs, &start).unwrap();
+
+        assert_eq!(
+            found,
+            Some(("1.21.5".to_string(), go_mod_path)),
+            "should prefer toolchain version"
         );
     }
 
