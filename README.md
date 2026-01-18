@@ -14,6 +14,15 @@
 
 ---
 
+<table>
+	<thead>
+    	<tr>
+      		<th style="text-align:center">English</th>
+      		<th style="text-align:center"><a href="README_ja.md">日本語</a></th>
+    	</tr>
+  	</thead>
+</table>
+
 Golta is a hassle-free way to manage your Go toolchains. It provides a fast, cross-platform solution for installing and switching between Go versions, inspired by the seamless experience of [Volta](https://volta.sh/).
 
 ## ✨ Features
