@@ -53,11 +53,9 @@ jobs:
           BIN_SHIM="go"
 
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            mv shim.exe ${BIN_SHIM}.exe
             7z a ../../../${{ matrix.asset_name }}.zip ${BIN_MAIN}.exe ${BIN_SHIM}.exe
             echo "ASSET_PATH=${{ matrix.asset_name }}.zip" >> $GITHUB_ENV
           else
-            mv shim ${BIN_SHIM}
             tar -czf ../../../${{ matrix.asset_name }}.tar.gz ${BIN_MAIN} ${BIN_SHIM}
             echo "ASSET_PATH=${{ matrix.asset_name }}.tar.gz" >> $GITHUB_ENV
           fi
