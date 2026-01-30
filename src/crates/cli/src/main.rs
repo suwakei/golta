@@ -75,12 +75,18 @@ pub enum Commands {
         tool: String,
     },
     #[command(about = "List all installed versions (alias: ls)", alias = "ls")]
-    List,
+    List {
+        /// The tool to list versions for
+        tool: Option<String>,
+    },
     #[command(
         about = "List available versions from go.dev (alias: ls-remote)",
         alias = "ls-remote"
     )]
-    ListRemote,
+    ListRemote {
+        /// The tool to list remote versions for
+        tool: Option<String>,
+    },
     #[command(about = "Generate shell completion scripts")]
     Completions {
         /// The shell to generate completions for
@@ -122,8 +128,8 @@ async fn main() {
         } => pin::run(tool, update_go_mod),
         Commands::Unpin => unpin::run(),
         Commands::Which { tool } => which::run(tool),
-        Commands::List => list::run(),
-        Commands::ListRemote => list_remote::run().await,
+        Commands::List { tool } => list::run(tool),
+        Commands::ListRemote { tool } => list_remote::run(tool).await,
         Commands::Completions { shell } => completions::run(shell, &mut std::io::stdout()),
         Commands::Setup => setup::run(),
     }

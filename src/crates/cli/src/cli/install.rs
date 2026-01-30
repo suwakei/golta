@@ -2,6 +2,7 @@ use crate::shared::os_info::get_os_arch_and_format;
 use crate::shared::versions::{fetch_remote_versions, GoVersionInfo};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::Deserialize;
 use std::error::Error;
 use std::fs;
 #[cfg(windows)]
@@ -9,10 +10,11 @@ use std::fs::File;
 use std::future::Future;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 #[cfg(windows)]
 use zip::ZipArchive;
 
-pub async fn run(tool: String) {
+pub async fn run(tool_arg: String) {
     let home = match home::home_dir() {
         Some(path) => path,
         None => {
@@ -22,8 +24,25 @@ pub async fn run(tool: String) {
     };
 
     let mut stdout = io::stdout();
+
+    let (tool, version_spec) = match parse_tool_and_version(&tool_arg) {
+        Ok(res) => res,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    if tool != "go" {
+        if let Err(e) = install_go_tool(&tool, &version_spec, &home, &mut stdout).await {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
     if let Err(e) = install_go(
-        &tool,
+        &version_spec,
         &home,
         fetch_remote_versions,
         download_with_progress,
@@ -37,7 +56,7 @@ pub async fn run(tool: String) {
 }
 
 async fn install_go<W, FetchVersions, FetchVersionsFut, DownloadBytes, DownloadBytesFut>(
-    tool: &str,
+    version_spec: &str,
     home: &Path,
     fetch_versions: FetchVersions,
     download_bytes: DownloadBytes,
@@ -50,8 +69,7 @@ where
     DownloadBytes: Fn(String) -> DownloadBytesFut,
     DownloadBytesFut: Future<Output = Result<Vec<u8>, Box<dyn Error>>>,
 {
-    let version_spec = parse_version_spec(tool)?;
-    let version = resolve_go_version(&version_spec, fetch_versions, writer).await?;
+    let version = resolve_go_version(version_spec, fetch_versions, writer).await?;
 
     writeln!(writer, "Installing Go version {}", version)?;
 
@@ -90,21 +108,113 @@ where
     Ok(())
 }
 
-fn parse_version_spec(tool: &str) -> Result<String, Box<dyn Error>> {
-    if tool == "go@mod" {
-        read_go_mod_version().ok_or_else(|| "Could not find 'go <version>' in go.mod".into())
-    } else if tool.starts_with("go@") {
-        Ok(tool.trim_start_matches("go@").to_string())
-    } else if tool == "go" {
-        // 'go' だけの場合、go.modがあればそれを使い、なければlatestとする
-        if let Some(v) = read_go_mod_version() {
-            Ok(v)
-        } else {
-            Ok("latest".to_string())
-        }
+async fn install_go_tool(
+    tool: &str,
+    version: &str,
+    home: &Path,
+    writer: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
+    let (package_path, module_path) = get_tool_info(tool).ok_or(format!(
+        "Unknown tool: '{}'. Currently supported tools: gopls, dlv, air, staticcheck, golangci-lint",
+        tool
+    ))?;
+
+    let resolved_version = if version == "latest" {
+        resolve_latest_tool_version(module_path, writer).await?
     } else {
-        Err("Invalid format. Use `golta install go`, `golta install go@mod`, or `golta install go@<version>`.".into())
+        version.to_string()
+    };
+
+    let install_dir = home
+        .join(".golta")
+        .join("versions")
+        .join(tool)
+        .join(&resolved_version);
+    let bin_dir = install_dir.join("bin");
+
+    if bin_dir.exists() {
+        writeln!(
+            writer,
+            "{} {} is already installed.",
+            tool, resolved_version
+        )?;
+        return Ok(());
     }
+
+    writeln!(writer, "Installing {}@{}...", tool, resolved_version)?;
+
+    let status = Command::new("go")
+        .arg("install")
+        .arg(format!("{}@{}", package_path, resolved_version))
+        .env("GOBIN", &bin_dir)
+        .status()
+        .map_err(|e| format!("Failed to execute 'go install': {}. Make sure 'go' is in your PATH or installed via golta.", e))?;
+
+    if !status.success() {
+        return Err(format!("Failed to install {}@{}", tool, resolved_version).into());
+    }
+
+    writeln!(
+        writer,
+        "Installed {} {} to {:?}",
+        tool, resolved_version, bin_dir
+    )?;
+
+    Ok(())
+}
+
+fn parse_tool_and_version(input: &str) -> Result<(String, String), Box<dyn Error>> {
+    if input == "go" {
+        if let Some(v) = read_go_mod_version() {
+            return Ok(("go".to_string(), v));
+        } else {
+            return Ok(("go".to_string(), "latest".to_string()));
+        }
+    }
+    if input == "go@mod" {
+        let v = read_go_mod_version().ok_or("Could not find 'go <version>' in go.mod")?;
+        return Ok(("go".to_string(), v));
+    }
+
+    if let Some((tool, version)) = input.split_once('@') {
+        return Ok((tool.to_string(), version.to_string()));
+    }
+
+    Ok((input.to_string(), "latest".to_string()))
+}
+
+pub(crate) fn get_tool_info(tool: &str) -> Option<(&str, &str)> {
+    match tool {
+        "gopls" => Some(("golang.org/x/tools/gopls", "golang.org/x/tools/gopls")),
+        "dlv" => Some((
+            "github.com/go-delve/delve/cmd/dlv",
+            "github.com/go-delve/delve",
+        )),
+        "air" => Some(("github.com/air-verse/air", "github.com/air-verse/air")),
+        "staticcheck" => Some(("honnef.co/go/tools/cmd/staticcheck", "honnef.co/go/tools")),
+        "golangci-lint" => Some((
+            "github.com/golangci/golangci-lint/cmd/golangci-lint",
+            "github.com/golangci/golangci-lint",
+        )),
+        _ => None,
+    }
+}
+
+#[derive(Deserialize)]
+struct ProxyVersion {
+    #[serde(rename = "Version")]
+    version: String,
+}
+
+async fn resolve_latest_tool_version(
+    package: &str,
+    writer: &mut impl Write,
+) -> Result<String, Box<dyn Error>> {
+    writeln!(writer, "Resolving latest version for {}...", package)?;
+    let url = format!("https://proxy.golang.org/{}/@latest", package);
+    let response = reqwest::get(&url).await?.error_for_status()?;
+    let proxy_version: ProxyVersion = response.json().await?;
+    Ok(proxy_version.version)
 }
 
 async fn resolve_go_version<F, Fut>(
@@ -293,10 +403,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_version_spec_handles_latest() {
-        assert_eq!(parse_version_spec("go").unwrap(), "latest"); // go.modがない環境でのテスト前提
-        assert_eq!(parse_version_spec("go@latest").unwrap(), "latest");
-        assert_eq!(parse_version_spec("go@1.22.3").unwrap(), "1.22.3");
+    fn parses_tool_and_version_handles_latest() {
+        assert_eq!(
+            parse_tool_and_version("go").unwrap(),
+            ("go".to_string(), "latest".to_string())
+        ); // Assuming no go.mod
+        assert_eq!(
+            parse_tool_and_version("go@latest").unwrap(),
+            ("go".to_string(), "latest".to_string())
+        );
+        assert_eq!(
+            parse_tool_and_version("go@1.22.3").unwrap(),
+            ("go".to_string(), "1.22.3".to_string())
+        );
+        assert_eq!(
+            parse_tool_and_version("air").unwrap(),
+            ("air".to_string(), "latest".to_string())
+        );
+        assert_eq!(
+            parse_tool_and_version("air@v1.0").unwrap(),
+            ("air".to_string(), "v1.0".to_string())
+        );
     }
 
     #[test]
@@ -371,15 +498,9 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            install_go(
-                &format!("go@{}", version),
-                &home,
-                fetcher,
-                downloader,
-                &mut buffer,
-            )
-            .await
-            .unwrap();
+            install_go(version, &home, fetcher, downloader, &mut buffer)
+                .await
+                .unwrap();
         });
 
         let output = String::from_utf8(buffer).unwrap();

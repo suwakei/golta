@@ -16,29 +16,28 @@ fn handle_default(
 ) -> Result<(), Box<dyn Error>> {
     match cmd.command {
         Some(crate::DefaultCommands::Clear) => {
-            if manager.clear_default()? {
+            // Currently, the CLI structure for `Clear` implies "go", but the manager is generic.
+            if manager.clear_default("go")? {
                 println!("Cleared global default Go version.");
             } else {
                 println!("No global default Go version is set.");
             }
         }
         None => {
-            let tool = cmd.tool.expect("clap should ensure tool is present");
-            let version = parse_tool_version(&tool)?;
-            manager.set_default(version)?;
-            println!("Set Go default version to {}", version);
+            let tool_arg = cmd.tool.expect("clap should ensure tool is present");
+            let (tool, version) = parse_tool_version(&tool_arg)?;
+            manager.set_default(tool, version)?;
+            println!("Set {} default version to {}", tool, version);
         }
     }
     Ok(())
 }
 
-fn parse_tool_version(tool: &str) -> Result<&str, Box<dyn Error>> {
-    if !tool.starts_with("go@") {
-        return Err(
-            "Only Go default version is supported currently. Use format 'go@<version>'.".into(),
-        );
-    }
-    Ok(tool.trim_start_matches("go@"))
+fn parse_tool_version(input: &str) -> Result<(&str, &str), Box<dyn Error>> {
+    let (tool, version) = input
+        .split_once('@')
+        .ok_or("Invalid format. Use <tool>@<version>.")?;
+    Ok((tool, version))
 }
 
 /// `DefaultManager` abstracts the operations for managing the default version.
@@ -46,11 +45,11 @@ fn parse_tool_version(tool: &str) -> Result<&str, Box<dyn Error>> {
 trait DefaultManager {
     /// Sets the specified version as the default.
     /// Returns an error if the version is not installed.
-    fn set_default(&mut self, version: &str) -> Result<(), Box<dyn Error>>;
+    fn set_default(&mut self, tool: &str, version: &str) -> Result<(), Box<dyn Error>>;
 
     /// Clears the currently set default version.
     /// Returns `Ok(false)` if no default was set.
-    fn clear_default(&mut self) -> Result<bool, Box<dyn Error>>;
+    fn clear_default(&mut self, tool: &str) -> Result<bool, Box<dyn Error>>;
 }
 
 /// Filesystem implementation of `DefaultManager`.
@@ -65,31 +64,38 @@ impl FsDefaultManager {
         Self { state_dir }
     }
 
-    fn default_file_path(&self) -> PathBuf {
-        self.state_dir.join("default.txt")
+    fn default_file_path(&self, tool: &str) -> PathBuf {
+        if tool == "go" {
+            self.state_dir.join("default.txt")
+        } else {
+            self.state_dir.join(format!("{}.default", tool))
+        }
     }
 }
 
 impl DefaultManager for FsDefaultManager {
-    fn set_default(&mut self, version: &str) -> Result<(), Box<dyn Error>> {
-        // Check if the version is installed
-        let installed_versions = get_installed_versions()?;
-        if !installed_versions.iter().any(|v| v == version) {
-            return Err(format!(
-                "Go version {} is not installed. Please install it first with `golta install go@{}`.",
-                version, version
-            )
-            .into());
+    fn set_default(&mut self, tool: &str, version: &str) -> Result<(), Box<dyn Error>> {
+        // Check if the version is installed (currently only validates 'go')
+        if tool == "go" {
+            let installed_versions = get_installed_versions()?;
+            if !installed_versions.iter().any(|v| v == version) {
+                return Err(format!(
+                    "Go version {} is not installed. Please install it first with `golta install go@{}`.",
+                    version, version
+                )
+                .into());
+            }
         }
+        // TODO: Add validation for other tools when directory structure supports them
 
         create_dir_all(&self.state_dir)?;
-        write(self.default_file_path(), version)?;
+        write(self.default_file_path(tool), version)?;
 
         Ok(())
     }
 
-    fn clear_default(&mut self) -> Result<bool, Box<dyn Error>> {
-        let default_file = self.default_file_path();
+    fn clear_default(&mut self, tool: &str) -> Result<bool, Box<dyn Error>> {
+        let default_file = self.default_file_path(tool);
         if default_file.exists() {
             remove_file(default_file)?;
             Ok(true)
@@ -120,15 +126,15 @@ mod tests {
     }
 
     impl DefaultManager for MockManager {
-        fn set_default(&mut self, version: &str) -> Result<(), Box<dyn Error>> {
-            if !self.installed_versions.contains(version) {
+        fn set_default(&mut self, tool: &str, version: &str) -> Result<(), Box<dyn Error>> {
+            if tool == "go" && !self.installed_versions.contains(version) {
                 return Err("Version not installed".into());
             }
             self.default_version = Some(version.to_string());
             Ok(())
         }
 
-        fn clear_default(&mut self) -> Result<bool, Box<dyn Error>> {
+        fn clear_default(&mut self, _tool: &str) -> Result<bool, Box<dyn Error>> {
             if self.default_version.is_some() {
                 self.default_version = None;
                 Ok(true)
@@ -179,11 +185,11 @@ mod tests {
 
     #[test]
     fn test_parse_tool_version_success() {
-        assert_eq!(parse_tool_version("go@1.21.0").unwrap(), "1.21.0");
+        assert_eq!(parse_tool_version("go@1.21.0").unwrap(), ("go", "1.21.0"));
     }
 
     #[test]
-    fn test_parse_tool_version_invalid() {
-        assert!(parse_tool_version("node@18").is_err());
+    fn test_parse_tool_version_other_tool() {
+        assert_eq!(parse_tool_version("air@1.49.0").unwrap(), ("air", "1.49.0"));
     }
 }

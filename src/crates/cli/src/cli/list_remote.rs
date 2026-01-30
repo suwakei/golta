@@ -1,3 +1,4 @@
+use crate::cli::install::get_tool_info;
 use crate::shared::versions::{fetch_remote_versions, GoVersionInfo};
 use std::error::Error;
 use std::fs;
@@ -5,7 +6,9 @@ use std::future::Future;
 use std::io::Write;
 use std::path::PathBuf;
 
-pub async fn run() {
+pub async fn run(tool_opt: Option<String>) {
+    let tool = tool_opt.unwrap_or_else(|| "go".to_string());
+
     let mut out = std::io::stdout();
     let home = match home::home_dir() {
         Some(path) => path,
@@ -15,13 +18,30 @@ pub async fn run() {
         }
     };
 
-    let cache = FsRemoteVersionsCache::new(home);
-    if let Err(e) = list_remote_go_versions(fetch_remote_versions, &cache, &mut out).await {
-        eprintln!("Error: {}", e);
+    let cache = FsRemoteVersionsCache::new(home, &tool);
+
+    if tool == "go" {
+        if let Err(e) = list_remote_versions("Go", fetch_remote_versions, &cache, &mut out).await {
+            eprintln!("Error: {}", e);
+        }
+    } else {
+        match get_tool_info(&tool) {
+            Some((_, module_path)) => {
+                let module = module_path.to_string();
+                let fetcher = || fetch_tool_versions(module.clone());
+                if let Err(e) = list_remote_versions(&tool, fetcher, &cache, &mut out).await {
+                    eprintln!("Error: {}", e);
+                }
+            }
+            None => {
+                eprintln!("Error: Unknown tool '{}'. Supported tools: gopls, dlv, air, staticcheck, golangci-lint", tool);
+            }
+        }
     }
 }
 
-async fn list_remote_go_versions<W, Fetch, Fut>(
+async fn list_remote_versions<W, Fetch, Fut>(
+    tool_name: &str,
     fetch_versions: Fetch,
     cache: &impl RemoteVersionsCache,
     out: &mut W,
@@ -44,12 +64,16 @@ where
                 .unwrap_or(false);
 
             if use_cache {
-                writeln!(out, "Latest Go versions unchanged; showing cached results.")?;
+                writeln!(
+                    out,
+                    "Latest {} versions unchanged; showing cached results.",
+                    tool_name
+                )?;
                 render_versions(cached_versions.as_ref().unwrap(), out)?;
                 return Ok(());
             }
 
-            writeln!(out, "Fetching available Go versions from go.dev...")?;
+            writeln!(out, "Fetching available {} versions...", tool_name)?;
             render_versions(&remote_versions, out)?;
             if let Err(e) = cache.write_cache(&remote_versions) {
                 writeln!(out, "Warning: failed to update cache ({})", e).ok();
@@ -71,8 +95,30 @@ where
     }
 }
 
+async fn fetch_tool_versions(package: String) -> Result<Vec<GoVersionInfo>, Box<dyn Error>> {
+    let url = format!("https://proxy.golang.org/{}/@v/list", package);
+    let response = reqwest::get(&url).await?.error_for_status()?.text().await?;
+
+    let mut versions: Vec<GoVersionInfo> = response
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let v = line.trim();
+            let stable = !v.contains("rc") && !v.contains("beta") && !v.contains("alpha");
+            GoVersionInfo {
+                version: v.to_string(),
+                stable,
+            }
+        })
+        .collect();
+
+    // Proxy list is typically oldest to newest. Reverse to show newest first.
+    versions.reverse();
+    Ok(versions)
+}
+
 fn render_versions(versions: &[GoVersionInfo], out: &mut impl Write) -> Result<(), Box<dyn Error>> {
-    writeln!(out, "\nAvailable Go versions:")?;
+    writeln!(out, "\nAvailable versions:")?;
 
     for v in versions.iter() {
         let version_number = v.version.trim_start_matches("go");
@@ -85,7 +131,7 @@ fn render_versions(versions: &[GoVersionInfo], out: &mut impl Write) -> Result<(
 
     writeln!(
         out,
-        "\nUse `golta install go@<version>` to install a specific version."
+        "\nUse `golta install <tool>@<version>` to install a specific version."
     )?;
 
     Ok(())
@@ -101,11 +147,13 @@ struct FsRemoteVersionsCache {
 }
 
 impl FsRemoteVersionsCache {
-    fn new(home: PathBuf) -> Self {
-        let path = home
-            .join(".golta")
-            .join("cache")
-            .join("remote_versions.json");
+    fn new(home: PathBuf, tool: &str) -> Self {
+        let filename = if tool == "go" {
+            "remote_versions.json".to_string()
+        } else {
+            format!("remote_versions_{}.json", tool)
+        };
+        let path = home.join(".golta").join("cache").join(filename);
         Self { path }
     }
 }
@@ -153,10 +201,10 @@ mod tests {
         render_versions(&versions, &mut out).unwrap();
 
         let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("Available Go versions:"));
+        assert!(output.contains("Available versions:"));
         assert!(output.contains("  1.22.1"));
         assert!(output.contains("  1.23rc1 (unstable)"));
-        assert!(output.contains("Use `golta install go@<version>`"));
+        assert!(output.contains("Use `golta install <tool>@<version>`"));
     }
 
     #[test]
@@ -171,13 +219,13 @@ mod tests {
         let fake_fetcher = || async { Ok(versions.clone()) };
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            list_remote_go_versions(fake_fetcher, &cache, &mut out)
+            list_remote_versions("Go", fake_fetcher, &cache, &mut out)
                 .await
                 .unwrap();
         });
 
         let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("Fetching available Go versions from go.dev..."));
+        assert!(output.contains("Fetching available Go versions..."));
         assert!(output.contains("  1.20.0"));
     }
 
@@ -198,14 +246,14 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            list_remote_go_versions(fetcher, &cache, &mut out)
+            list_remote_versions("Go", fetcher, &cache, &mut out)
                 .await
                 .unwrap();
         });
 
         let output = String::from_utf8(out).unwrap();
         assert!(output.contains("cached results"));
-        assert!(!output.contains("Fetching available Go versions from go.dev"));
+        assert!(!output.contains("Fetching available Go versions..."));
         assert!(output.contains("  1.20.0"));
         assert_eq!(cache.write_calls(), 0, "should not rewrite cache");
     }
@@ -222,7 +270,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            list_remote_go_versions(failing_fetcher, &cache, &mut out)
+            list_remote_versions("Go", failing_fetcher, &cache, &mut out)
                 .await
                 .unwrap();
         });
@@ -248,7 +296,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            list_remote_go_versions(fetcher, &cache, &mut out)
+            list_remote_versions("Go", fetcher, &cache, &mut out)
                 .await
                 .unwrap();
         });

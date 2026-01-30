@@ -3,43 +3,54 @@ use crate::shared::pinned_version::find_pinned_go_version;
 use regex::Regex;
 use semver::Version;
 use std::error::Error;
+use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-pub fn run() {
+pub fn run(tool_opt: Option<String>) {
+    let tool = tool_opt.unwrap_or_else(|| "go".to_string());
     let ctx = FsListContext;
     let mut out = std::io::stdout();
-    if let Err(e) = list_go(&ctx, &mut out) {
+    if let Err(e) = list_versions(&ctx, &tool, &mut out) {
         eprintln!("Error: {}", e);
     }
 }
 
-fn list_go(ctx: &impl ListContext, out: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-    let home = ctx.home_dir().ok_or("Could not find home directory")?;
-    let default_file = home.join(".golta").join("state").join("default.txt");
+fn list_versions(
+    ctx: &impl ListContext,
+    tool: &str,
+    out: &mut dyn Write,
+) -> Result<(), Box<dyn Error>> {
+    let default_version = ctx.read_default_version(tool);
 
-    let default_version = ctx
-        .read_default_version(&default_file)
-        .map(|s| s.trim().to_string());
-
-    let pinned_version = ctx.pinned_go_version()?;
+    // Pinning is currently only supported for "go"
+    let pinned_version = if tool == "go" {
+        ctx.pinned_go_version()?
+    } else {
+        None
+    };
     let active_version = pinned_version.clone().or_else(|| default_version.clone());
 
-    writeln!(out, "Installed Go versions:")?;
+    writeln!(out, "Installed {} versions:", tool)?;
 
-    let installed_strings = ctx.installed_versions()?;
-    let mut sortable_versions: Vec<(Version, String)> = installed_strings
+    let installed_strings = ctx.installed_versions(tool)?;
+    let mut sortable_versions: Vec<(Option<Version>, String)> = installed_strings
         .iter()
-        .filter_map(|s| {
-            let normalized = normalize_go_version_for_semver(s);
-            Version::parse(&normalized).ok().map(|v| (v, s.clone()))
+        .map(|s| {
+            let normalized = normalize_version(s);
+            (Version::parse(&normalized).ok(), s.clone())
         })
         .collect();
 
-    sortable_versions.sort_by(|(v1, _), (v2, _)| v2.cmp(v1));
+    sortable_versions.sort_by(|(v1, s1), (v2, s2)| match (v1, v2) {
+        (Some(v1), Some(v2)) => v2.cmp(v1),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => s1.cmp(s2),
+    });
 
     if sortable_versions.is_empty() {
-        writeln!(out, "  No Go versions installed")?;
+        writeln!(out, "  No {} versions installed", tool)?;
         return Ok(());
     }
 
@@ -72,9 +83,9 @@ fn list_go(ctx: &impl ListContext, out: &mut dyn Write) -> Result<(), Box<dyn Er
 
 trait ListContext {
     fn home_dir(&self) -> Option<PathBuf>;
-    fn read_default_version(&self, default_file: &Path) -> Option<String>;
+    fn read_default_version(&self, tool: &str) -> Option<String>;
     fn pinned_go_version(&self) -> Result<Option<String>, Box<dyn Error>>;
-    fn installed_versions(&self) -> Result<Vec<String>, Box<dyn Error>>;
+    fn installed_versions(&self, tool: &str) -> Result<Vec<String>, Box<dyn Error>>;
 }
 
 struct FsListContext;
@@ -84,23 +95,52 @@ impl ListContext for FsListContext {
         home::home_dir()
     }
 
-    fn read_default_version(&self, default_file: &Path) -> Option<String> {
-        std::fs::read_to_string(default_file).ok()
+    fn read_default_version(&self, tool: &str) -> Option<String> {
+        let home = self.home_dir()?;
+        let state_dir = home.join(".golta").join("state");
+        let path = if tool == "go" {
+            state_dir.join("default.txt")
+        } else {
+            state_dir.join(format!("{}.default", tool))
+        };
+        std::fs::read_to_string(path)
+            .ok()
+            .map(|s| s.trim().to_string())
     }
 
     fn pinned_go_version(&self) -> Result<Option<String>, Box<dyn Error>> {
         Ok(find_pinned_go_version()?.map(|(v, _)| v))
     }
 
-    fn installed_versions(&self) -> Result<Vec<String>, Box<dyn Error>> {
-        get_installed_versions()
+    fn installed_versions(&self, tool: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        if tool == "go" {
+            get_installed_versions()
+        } else {
+            let home = self.home_dir().ok_or("Could not find home directory")?;
+            let tool_dir = home.join(".golta").join("versions").join(tool);
+            if !tool_dir.exists() {
+                return Ok(Vec::new());
+            }
+
+            let mut versions = Vec::new();
+            for entry in fs::read_dir(tool_dir)? {
+                let entry = entry?;
+                if entry.file_type()?.is_dir() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        versions.push(name);
+                    }
+                }
+            }
+            Ok(versions)
+        }
     }
 }
 
-// Helper function to normalize Go version strings to a semver-compatible format
-// This handles Go-specific pre-release formats like "1.3rc1" by converting them
-// to "1.3.0-rc1" which `semver::Version::parse` can understand.
-fn normalize_go_version_for_semver(version_str: &str) -> String {
+// Helper function to normalize version strings to a semver-compatible format
+fn normalize_version(version_str: &str) -> String {
+    // Strip 'v' prefix if present (common in tools like air, dlv)
+    let version_str = version_str.strip_prefix('v').unwrap_or(version_str);
+
     // Regex to match "MAJOR.MINORrcX" or "MAJOR.MINORbetaX"
     // e.g., "1.3rc1" -> "1.3.0-rc1"
     // e.g., "1.4beta1" -> "1.4.0-beta1"
@@ -142,7 +182,7 @@ mod tests {
             self.home.clone()
         }
 
-        fn read_default_version(&self, _default_file: &Path) -> Option<String> {
+        fn read_default_version(&self, _tool: &str) -> Option<String> {
             self.default.clone()
         }
 
@@ -150,7 +190,7 @@ mod tests {
             Ok(self.pinned.clone())
         }
 
-        fn installed_versions(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        fn installed_versions(&self, _tool: &str) -> Result<Vec<String>, Box<dyn Error>> {
             Ok(self.installed.clone())
         }
     }
@@ -160,11 +200,11 @@ mod tests {
         let ctx = MockCtx::default();
         let mut out: Vec<u8> = Vec::new();
 
-        list_go(&ctx, &mut out).unwrap();
+        list_versions(&ctx, "go", &mut out).unwrap();
 
         let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("Installed Go versions:"));
-        assert!(output.contains("No Go versions installed"));
+        assert!(output.contains("Installed go versions:"));
+        assert!(output.contains("No go versions installed"));
     }
 
     #[test]
@@ -180,7 +220,7 @@ mod tests {
         };
         let mut out: Vec<u8> = Vec::new();
 
-        list_go(&ctx, &mut out).unwrap();
+        list_versions(&ctx, "go", &mut out).unwrap();
 
         let output = String::from_utf8(out).unwrap();
         assert!(output.contains("* 1.20.0 (default)"));
@@ -200,7 +240,7 @@ mod tests {
         };
         let mut out: Vec<u8> = Vec::new();
 
-        list_go(&ctx, &mut out).unwrap();
+        list_versions(&ctx, "go", &mut out).unwrap();
 
         let output = String::from_utf8(out).unwrap();
         assert!(
@@ -211,5 +251,11 @@ mod tests {
             !output.contains("* 1.20.0"),
             "only pinned should be active when both exist"
         );
+    }
+
+    #[test]
+    fn normalizes_v_prefix() {
+        assert_eq!(normalize_version("v1.2.3"), "1.2.3");
+        assert_eq!(normalize_version("1.2.3"), "1.2.3");
     }
 }
